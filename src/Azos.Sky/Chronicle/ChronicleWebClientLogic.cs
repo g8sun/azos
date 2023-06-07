@@ -83,7 +83,7 @@ namespace Azos.Sky.Chronicle
       var response = await m_Server.Call(LogServiceAddress,
                                           nameof(ILogChronicle),
                                           new ShardKey(DateTime.UtcNow),
-                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("batch", data)).ConfigureAwait(false);
+                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("batch", new {batch = data})).ConfigureAwait(false);
       response.UnwrapChangeResult();
     }
 
@@ -92,12 +92,17 @@ namespace Azos.Sky.Chronicle
      => await (filter.NonNull(nameof(filter)).CrossShard ? getCrossShard(filter)
                                                          : getOneShard(filter)).ConfigureAwait(false);
 
+    //20230515 DKh #861
+    public async Task<IEnumerable<Fact>> GetFactsAsync(LogChronicleFactFilter filter)
+         => await (filter.NonNull(nameof(filter)).LogFilter.NonNull(nameof(filter.LogFilter)).CrossShard ? getFactsCrossShard(filter)
+                                                             : getFactsOneShard(filter)).ConfigureAwait(false);
+
     private async Task<IEnumerable<Message>> getCrossShard(LogChronicleFilter filter)
     {
       filter.CrossShard = false; //stop recursion, each shard should return just its own data
       var shards = m_Server.GetEndpointsForAllShards(LogServiceAddress, nameof(ILogChronicle));
 
-      var calls = shards.Select(shard => shard.Call((http, ct) => http.Client.PostAndGetJsonMapAsync("filter", filter)));
+      var calls = shards.Select(shard => shard.Call((http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new {filter = filter})));
 
       var responses = await Task.WhenAll(calls.Select( async call => {
         try
@@ -125,11 +130,53 @@ namespace Azos.Sky.Chronicle
       var response = await m_Server.Call(LogServiceAddress,
                                           nameof(ILogChronicle),
                                           new ShardKey(0u),
-                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("filter", filter)).ConfigureAwait(false);
+                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new {filter = filter})).ConfigureAwait(false);
 
       var result = response.UnwrapPayloadArray()
               .OfType<JsonDataMap>()
               .Select(imap => JsonReader.ToDoc<Message>(imap));
+
+      return result;
+    }
+
+    private async Task<IEnumerable<Fact>> getFactsCrossShard(LogChronicleFactFilter filter)
+    {
+      filter.LogFilter.CrossShard = false; //stop recursion, each shard should return just its own data
+      var shards = m_Server.GetEndpointsForAllShards(LogServiceAddress, nameof(ILogChronicle));
+
+      var calls = shards.Select(shard => shard.Call((http, ct) => http.Client.PostAndGetJsonMapAsync("filter-facts", new { filter = filter })));
+
+      var responses = await Task.WhenAll(calls.Select(async call => {
+        try
+        {
+          return await call.ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+          WriteLog(MessageType.Warning, nameof(getCrossShard), "Shard fetch error: " + error.ToMessageWithType(), error);
+          return null;
+        }
+      })).ConfigureAwait(false);
+
+      var result = responses.SelectMany(response => response.UnwrapPayloadArray()
+                                                            .OfType<JsonDataMap>()
+                                                            .Select(imap => JsonReader.ToDoc<Fact>(imap)))
+                            .OrderBy(m => m.UtcTimestamp)
+                            .ToArray();
+
+      return result;
+    }
+
+    private async Task<IEnumerable<Fact>> getFactsOneShard(LogChronicleFactFilter filter)
+    {
+      var response = await m_Server.Call(LogServiceAddress,
+                                          nameof(ILogChronicle),
+                                          new ShardKey(0u),
+                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("filter-facts", new { filter = filter })).ConfigureAwait(false);
+
+      var result = response.UnwrapPayloadArray()
+              .OfType<JsonDataMap>()
+              .Select(imap => JsonReader.ToDoc<Fact>(imap));
 
       return result;
     }
@@ -139,7 +186,7 @@ namespace Azos.Sky.Chronicle
       var response = await m_Server.Call(InstrumentationServiceAddress,
                                          nameof(IInstrumentationChronicle),
                                          new ShardKey(DateTime.UtcNow),
-                                         (http, ct) => http.Client.PostAndGetJsonMapAsync("batch", data)).ConfigureAwait(false);
+                                         (http, ct) => http.Client.PostAndGetJsonMapAsync("batch", new {batch = data})).ConfigureAwait(false);
       response.UnwrapChangeResult();
     }
 
@@ -148,7 +195,7 @@ namespace Azos.Sky.Chronicle
       var response = await m_Server.Call(InstrumentationServiceAddress,
                                            nameof(IInstrumentationChronicle),
                                            new ShardKey(0u),
-                                           (http, ct) => http.Client.PostAndGetJsonMapAsync("filter", filter)).ConfigureAwait(false);
+                                           (http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new {filter = filter})).ConfigureAwait(false);
 
       var result = response.UnwrapPayloadArray()
                            .OfType<JsonDataMap>();

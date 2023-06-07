@@ -590,6 +590,21 @@ namespace Azos.IO
     }
 
 
+    public override DateTimeOffset ReadDateTimeOffset()
+    {
+      var dateTime = ReadDateTime();
+      var offset = ReadTimeSpan();
+      return new DateTimeOffset(dateTime, offset);
+    }
+
+    public override DateTimeOffset? ReadNullableDateTimeOffset()
+    {
+      var has = ReadBool();
+      if (has) return ReadDateTimeOffset();
+      return null;
+    }
+
+
     public override TimeSpan ReadTimeSpan()
     {
       var ticks = this.ReadLong();
@@ -633,6 +648,22 @@ namespace Azos.IO
       var has = this.ReadBool();
 
       if (has) return this.ReadGDID();
+
+      return null;
+    }
+
+    public override Data.RGDID ReadRGDID()
+    {
+      var route = this.ReadUInt();
+      var gdid = this.ReadGDID();
+      return new Data.RGDID(route, gdid);
+    }
+
+    public override Data.RGDID? ReadNullableRGDID()
+    {
+      var has = this.ReadBool();
+
+      if (has) return this.ReadRGDID();
 
       return null;
     }

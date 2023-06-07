@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Azos
 {
@@ -15,7 +16,6 @@ namespace Azos
   /// </summary>
   public static class CollectionUtils
   {
-
     /// <summary>
     /// Adds the specified element at the end of the sequence. Sequence may be null
     /// </summary>
@@ -81,6 +81,46 @@ namespace Azos
     }
 
     /// <summary>
+    /// Projects enumerable using a select function in batches of the specified size on parallel threads.
+    /// This function is useful for cases when projection takes sizable CPU time (e.g. converting JSON object) and
+    /// can benefit from parallel execution
+    /// </summary>
+    public static IEnumerable<TResult> ParallelSelectBy<T, TResult>(this IEnumerable<T> src, int size, Func<T, TResult> fSelect)
+    {
+      fSelect.NonNull(nameof(fSelect));
+      (size > 0).IsTrue("sz>0");
+
+      if (src == null) yield break;
+
+      var batch = new T[size];
+      var batchResult = new TResult[size];
+      var idx = 0;
+      foreach (var e in src)
+      {
+        if (idx == size)
+        {
+          Parallel.For(0, idx, i => batchResult[i] = fSelect(batch[i]));
+          for (var i = 0; i < idx; i++)
+          {
+            yield return batchResult[i];
+          }
+          idx = 0;
+        }
+
+        batch[idx++] = e;
+      }
+
+      if (idx > 0)
+      {
+        Parallel.For(0, idx, i => batchResult[i] = fSelect(batch[i]));
+        for (var i = 0; i < idx; i++)
+        {
+          yield return batchResult[i];
+        }
+      }
+    }
+
+    /// <summary>
     /// Takes all elements except for the last element from the given source
     /// </summary>
     public static IEnumerable<T> SkipLast<T>(this IEnumerable<T> src)
@@ -114,7 +154,11 @@ namespace Azos
       }
     }
 
-
+    /// <summary>
+    /// Returns an item from a sequence which has the minimum (the smallest) comparand value according to the comparand
+    /// selector function. Returns default(TResult) if the sequence is empty.
+    /// A sequence of a single element returns that element
+    /// </summary>
     public static TResult FirstMin<TResult, TComparand>(this IEnumerable<TResult> source,
                                                         Func<TResult, TComparand> selector) where TComparand: IComparable
     {
@@ -122,7 +166,11 @@ namespace Azos
       return source.FirstMin(selector, out dummy);
     }
 
-
+    /// <summary>
+    /// Returns an item from a sequence which has the minimum (the smallest) comparand value according to the comparand
+    /// selector function. Returns default(TResult) if the sequence is empty.
+    /// A sequence of a single element returns that element
+    /// </summary>
     public static TResult FirstMin<TResult, TComparand>(this IEnumerable<TResult> source,
                                                         Func<TResult, TComparand> selector,
                                                         out TComparand minComparand) where TComparand: IComparable
@@ -130,7 +178,11 @@ namespace Azos
       return firstMinMax(true, source, selector, out minComparand);
     }
 
-
+    /// <summary>
+    /// Returns an item from a sequence which has the maximum (the largest) comparand value according to the comparand
+    /// selector function. Returns default(TResult) if the sequence is empty.
+    /// A sequence of a single element returns that element
+    /// </summary>
     public static TResult FirstMax<TResult, TComparand>(this IEnumerable<TResult> source,
                                                         Func<TResult, TComparand> selector) where TComparand: IComparable
     {
@@ -138,7 +190,11 @@ namespace Azos
       return source.FirstMax(selector, out dummy);
     }
 
-
+    /// <summary>
+    /// Returns an item from a sequence which has the maximum (the largest) comparand value according to the comparand
+    /// selector function. Returns default(TResult) if the sequence is empty.
+    /// A sequence of a single element returns that element
+    /// </summary>
     public static TResult FirstMax<TResult, TComparand>(this IEnumerable<TResult> source,
                                                         Func<TResult, TComparand> selector,
                                                         out TComparand maxComparand) where TComparand: IComparable
@@ -146,21 +202,21 @@ namespace Azos
       return firstMinMax(false, source, selector, out maxComparand);
     }
 
-    private static TResult firstMinMax<TResult, TComparand>(bool min,
-                                                        IEnumerable<TResult> source,
-                                                        Func<TResult, TComparand> selector,
-                                                        out TComparand latchedComparand) where TComparand: IComparable
+    private static TResult firstMinMax<TResult, TComparand>(bool ismin,
+                                                            IEnumerable<TResult> source,
+                                                            Func<TResult, TComparand> selector,
+                                                            out TComparand latchedComparand) where TComparand: IComparable
     {
       var latchedResult = default(TResult);
       latchedComparand = default(TComparand);
 
       if (source==null || selector==null) return latchedResult;
 
-      bool was = false;
+      var was = false;
       foreach(var elm in source)
       {
         var c = selector(elm);
-        if (!was || (min ? c.CompareTo(latchedComparand)<0 : c.CompareTo(latchedComparand)>0))
+        if (!was || (ismin ? c.CompareTo(latchedComparand)<0 : c.CompareTo(latchedComparand)>0))
         {
           latchedResult = elm;
           latchedComparand = c;
@@ -185,6 +241,28 @@ namespace Azos
 
       return source.FirstOrDefault();
     }
+
+    /// <summary>
+    /// Randomly shuffles a stream of items.
+    /// WARNING: This method materializes the stream into a list for shuffling, so it may hang for infinite stream sizes
+    /// </summary>
+    public static List<T> RandomShuffle<T>(this IEnumerable<T> source)
+    {
+      var list = source.NonDisposed(nameof(source))
+                       .ToList();
+
+      for(var i=0; i < list.Count; i++)
+      {
+        var i2 = Ambient.Random.NextScaledRandomInteger(0, list.Count-1);
+        if (i == i2) continue;
+        var was = list[i];
+        list[i] = list[i2];
+        list[i2] = was;
+      }
+
+      return list;
+    }
+
 
     /// <summary>
     /// Returns a new array that contains source elements with additional elements appended at the end
@@ -225,7 +303,10 @@ namespace Azos
     {
       if (source == null) yield break;
       if (selector == null)
+      {
         foreach (var item in source) yield return item;
+        yield break;
+      }
 
       var set = distinctEqualityComparer!=null ? new HashSet<TKey>(distinctEqualityComparer) : new HashSet<TKey>();
       foreach(var item in source)
@@ -245,7 +326,54 @@ namespace Azos
       yield return first;
 
       if (others != null)
+      {
         foreach(var other in others) yield return other;
+      }
+    }
+
+    /// <summary>
+    /// Changes key value by delta. If value does not exist then creates key with the specified value
+    /// </summary>
+    public static void Increase<TKey>(this IDictionary<TKey, int> dict, TKey key, int by = 1)
+    {
+      if (!dict.NonNull(nameof(dict)).TryGetValue(key, out var existing)) existing = 0;
+      dict[key] = existing + by;
+    }
+
+    /// <summary>
+    /// Changes key value by delta. If value does not exist then creates key with the specified value
+    /// </summary>
+    public static void Increase<TKey>(this IDictionary<TKey, long> dict, TKey key, long by = 1L)
+    {
+      if (!dict.NonNull(nameof(dict)).TryGetValue(key, out var existing)) existing = 0L;
+      dict[key] = existing + by;
+    }
+
+    /// <summary>
+    /// Changes key value by delta. If value does not exist then creates key with the specified value
+    /// </summary>
+    public static void Increase<TKey>(this IDictionary<TKey, decimal> dict, TKey key, decimal by = 1m)
+    {
+      if (!dict.NonNull(nameof(dict)).TryGetValue(key, out var existing)) existing = 0m;
+      dict[key] = existing + by;
+    }
+
+    /// <summary>
+    /// Changes key value by delta. If value does not exist then creates key with the specified value
+    /// </summary>
+    public static void Increase<TKey>(this IDictionary<TKey, float> dict, TKey key, float by = 1f)
+    {
+      if (!dict.NonNull(nameof(dict)).TryGetValue(key, out var existing)) existing = 0f;
+      dict[key] = existing + by;
+    }
+
+    /// <summary>
+    /// Changes key value by delta. If value does not exist then creates key with the specified value
+    /// </summary>
+    public static void Increase<TKey>(this IDictionary<TKey, double> dict, TKey key, double by = 1d)
+    {
+      if (!dict.NonNull(nameof(dict)).TryGetValue(key, out var existing)) existing = 0d;
+      dict[key] = existing + by;
     }
 
   }

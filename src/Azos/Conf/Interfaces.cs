@@ -32,7 +32,7 @@ namespace Azos.Conf
     /// <summary>
     /// Persists relevant entities parameters/state into the specified configuration node
     /// </summary>
-    void PersistConfiguration(ConfigSectionNode node);
+    ConfigSectionNode PersistConfiguration(ConfigSectionNode parentNode, string name);
   }
 
 
@@ -369,6 +369,22 @@ namespace Azos.Conf
     GDID? ValueAsNullableGDID(GDID? dflt = null, bool verbatim = false);
 
     /// <summary>
+    /// Returns node value as RGDID performing conversion if necessary.
+    /// The optional default is applied when conversion can not be made.
+    /// The method evaluates variables embedded in the node literal value unless verbatim parameter
+    /// is specified in which case the literal value is returned as-is without any evaluation
+    /// </summary>
+    RGDID ValueAsRGDID(RGDID dflt, bool verbatim = false);
+
+    /// <summary>
+    /// Returns node value as RGDID? performing conversion if necessary.
+    /// The optional default is applied when conversion can not be made.
+    /// The method evaluates variables embedded in the node literal value unless verbatim parameter
+    /// is specified in which case the literal value is returned as-is without any evaluation
+    /// </summary>
+    RGDID? ValueAsNullableRGDID(RGDID? dflt = null, bool verbatim = false);
+
+    /// <summary>
     /// Returns node value as DateTime performing conversion if necessary.
     /// The optional default is applied when conversion can not be made.
     /// The method evaluates variables embedded in the node literal value unless verbatim parameter
@@ -539,7 +555,7 @@ namespace Azos.Conf
     ///  with input as path string. "~" is used to qualify environment vars that get resolved through Configuration.EnvironmentVarResolver
     ///  Example: `....add key="Schema.$(/A/B/C/$attr)" value="$(@~HOME)bin\Transforms\"...`
     /// </summary>
-    string EvaluateValueVariables(string value);
+    string EvaluateValueVariables(string value, bool recurse = true);
 
     /// <summary>
     /// Returns true when this and another nodes both have attribute "name" and their values are equal per case-insensitive culture-neutral comparison

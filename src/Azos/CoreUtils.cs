@@ -13,6 +13,9 @@ using System.Diagnostics;
 using Azos.Apps;
 using System.Runtime.CompilerServices;
 using Azos.Serialization.JSON;
+using System.Threading.Tasks;
+using Azos.Data.Idgen;
+using System.Linq;
 
 namespace Azos
 {
@@ -78,7 +81,6 @@ namespace Azos
       return target;
     }
 
-
     /// <summary>
     /// Writes exception message with exception type
     /// </summary>
@@ -86,7 +88,7 @@ namespace Azos
     public static string ToMessageWithType(this Exception error)
     {
       if (error == null) return null;
-      return "[{0}] {1}".Args(error.GetType().FullName, error.Message);
+      return $"[{error.GetType().FullName}] {error.Message}";
     }
 
     /// <summary>
@@ -227,6 +229,22 @@ namespace Azos
       return true;
     }
 
+    //#861
+    private static readonly Platform.FiniteSetLookup<Type, bool> ANONYMOUS_TYPES = new( t =>
+      t.BaseType == typeof(object) &&
+      t.Namespace.IsNullOrWhiteSpace() &&
+      t.GetCustomAttributes<CompilerGeneratedAttribute>().Any());
+
+    /// <summary>
+    /// Returns true if the type is anonymous akin to: `new {p=v}`
+    /// </summary>
+    public static bool IsAnonymousType(this Type t)
+    {
+      if (t==null) return false;
+      return ANONYMOUS_TYPES[t];
+    }
+
+
     /// <summary>
     /// Searches an Exception and its InnerException chain for the first instance of T or null.
     /// The original instance may be null itself in which case null is returned
@@ -279,7 +297,7 @@ namespace Azos
     /// Returns true if there was no error on action success, or false if error leaked from action and was logged by component.
     /// The actual logging depends on the component log level
     /// </summary>
-    public static bool DontLeak(this IApplicationComponent cmp, Action action, string errorText = null, [CallerMemberName]string errorFrom = null, Log.MessageType errorLogType = Log.MessageType.Error)
+    public static bool DontLeak(this IApplicationComponent cmp, Action action, string errorText = null, [CallerMemberName]string errorFrom = null, Log.MessageType errorLogType = Log.MessageType.Error, Guid? rel = null)
     {
       var ac = (cmp.NonNull(nameof(cmp)) as ApplicationComponent).NonNull("Internal error: not a AC");
       action.NonNull(nameof(action));
@@ -293,7 +311,7 @@ namespace Azos
         if (errorText.IsNullOrWhiteSpace()) errorText = "Error leaked: ";
         errorText += error.ToMessageWithType();
 
-        ac.WriteLog(errorLogType, errorFrom, errorText, error);
+        ac.WriteLog(errorLogType, errorFrom, errorText, error, related: rel);
       }
 
       return false;
@@ -304,7 +322,33 @@ namespace Azos
     /// Returns true if there was no error on action success, or false if error leaked from action and was logged by component.
     /// The actual logging depends on the component log level
     /// </summary>
-    public static TResult DontLeak<TResult>(this IApplicationComponent cmp, Func<TResult> func, string errorText = null, [CallerMemberName]string errorFrom = null, Log.MessageType errorLogType = Log.MessageType.Error)
+    public static async Task<bool> DontLeakAsync(this IApplicationComponent cmp, Func<Task> action, string errorText = null, [CallerMemberName]string errorFrom = null, Log.MessageType errorLogType = Log.MessageType.Error, Guid? rel = null)
+    {
+      var ac = (cmp.NonNull(nameof(cmp)) as ApplicationComponent).NonNull("Internal error: not a AC");
+      action.NonNull(nameof(action));
+      try
+      {
+        await action().ConfigureAwait(false);
+        return true;
+      }
+      catch (Exception error)
+      {
+        if (errorText.IsNullOrWhiteSpace()) errorText = "Error leaked: ";
+        errorText += error.ToMessageWithType();
+
+        ac.WriteLog(errorLogType, errorFrom, errorText, error, related: rel);
+      }
+
+      return false;
+    }
+
+
+    /// <summary>
+    /// Encloses an action in try catch and logs the error if it leaked from action. This method never leaks.
+    /// Returns result if there was no error on action success, or dafault(TResult) if error leaked from action and was logged by component.
+    /// The actual logging depends on the component log level
+    /// </summary>
+    public static TResult DontLeak<TResult>(this IApplicationComponent cmp, Func<TResult> func, string errorText = null, [CallerMemberName]string errorFrom = null, Log.MessageType errorLogType = Log.MessageType.Error, Guid? rel = null)
     {
       var ac = (cmp.NonNull(nameof(cmp)) as ApplicationComponent).NonNull("Internal error: not a AC");
       func.NonNull(nameof(func));
@@ -317,12 +361,67 @@ namespace Azos
         if (errorText.IsNullOrWhiteSpace()) errorText = "Error leaked: ";
         errorText += error.ToMessageWithType();
 
-        ac.WriteLog(errorLogType, errorFrom, errorText, error);
+        ac.WriteLog(errorLogType, errorFrom, errorText, error, related: rel);
       }
 
       return default(TResult);
     }
 
+
+    /// <summary>
+    /// Encloses an action in try catch and logs the error if it leaked from action. This method never leaks.
+    /// Returns true if there was no error on action success, or false if error leaked from action and was logged by component.
+    /// The actual logging depends on the component log level
+    /// </summary>
+    public static async Task<TResult> DontLeakAsync<TResult>(this IApplicationComponent cmp, Func<Task<TResult>> func, string errorText = null, [CallerMemberName]string errorFrom = null, Log.MessageType errorLogType = Log.MessageType.Error, Guid? rel = null)
+    {
+      var ac = (cmp.NonNull(nameof(cmp)) as ApplicationComponent).NonNull("Internal error: not a AC");
+      func.NonNull(nameof(func));
+      try
+      {
+        return await func().ConfigureAwait(false);
+      }
+      catch (Exception error)
+      {
+        if (errorText.IsNullOrWhiteSpace()) errorText = "Error leaked: ";
+        errorText += error.ToMessageWithType();
+
+        ac.WriteLog(errorLogType, errorFrom, errorText, error, related: rel);
+      }
+
+      return default(TResult);
+    }
+
+    /// <summary>
+    /// Returns current UTC Now using app precision time source
+    /// </summary>
+    public static DateTime GetUtcNow(this IApplication app) => app.NonNull(nameof(app)).TimeSource.UTCNow;
+
+    /// <summary>
+    /// Returns app cloud origin
+    /// </summary>
+    public static Atom GetCloudOrigin(this IApplication app)
+     => app.NonNull(nameof(app)).CloudOrigin.IsTrue(o => !o.IsZero && o.IsValid, "cloud-origin");
+
+
+    /// <summary>
+    /// Returns IGdidProvider
+    /// </summary>
+    public static IGdidProvider GetGdidProvider(this IApplication app)
+    {
+      //1 - search the app space
+      var module = app.NonNull(nameof(app)).ModuleRoot.TryGet<IGdidProviderModule>();
+
+      //2 - search the dynamic scope
+      if (module == null)
+      {
+        module = Apps.Injection.DynamicModuleFlowScope.Find(typeof(IGdidProviderModule), null) as IGdidProviderModule;
+      }
+
+      module.NonNull("Required `IGdidProviderModule` module installed in app or dynamic scope");
+
+      return module.Provider;
+    }
 
   }
 }

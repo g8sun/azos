@@ -8,7 +8,6 @@ using System;
 
 using Azos.Instrumentation;
 using Azos.Serialization.Arow;
-using Azos.Serialization.BSON;
 
 namespace Azos.Wave.Instrumentation
 {
@@ -28,6 +27,15 @@ namespace Azos.Wave.Instrumentation
   public abstract class WaveDoubleGauge : DoubleGauge, IWebInstrument
   {
     protected WaveDoubleGauge(string src, double value) : base(src, value) { }
+  }
+
+  /// <summary>
+  /// Provides base for Wave events
+  /// </summary>
+  [Serializable]
+  public abstract class WaveEvent : Event, IWebInstrument
+  {
+    protected WaveEvent(string src) : base(src) { }
   }
 
   /// <summary>
@@ -275,22 +283,6 @@ namespace Azos.Wave.Instrumentation
     public override string ValueUnitName { get { return Azos.CoreConsts.UNIT_NAME_WORK_CONTEXT; } }
 
     protected override Datum MakeAggregateInstance() { return new WorkContextHandled(this.Source, 0); }
-  }
-
-  /// <summary>
-  /// How many work contexts requested not to be closed at the end of the initial request processing cycle
-  /// </summary>
-  [Serializable]
-  [Arow("A12562A0-F81D-4972-949B-A37A5E6CBC58")]
-  public class WorkContextNoDefaultClose : WaveLongGauge, INetInstrument
-  {
-    internal WorkContextNoDefaultClose(string src, long value) : base(src, value) { }
-
-    public override string Description { get { return "How many work contexts requested not to be closed at the end of the initial request processing cycle"; } }
-
-    public override string ValueUnitName { get { return Azos.CoreConsts.UNIT_NAME_WORK_CONTEXT; } }
-
-    protected override Datum MakeAggregateInstance() { return new WorkContextNoDefaultClose(this.Source, 0); }
   }
 
 

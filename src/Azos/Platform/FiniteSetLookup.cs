@@ -11,9 +11,9 @@ using System.Threading;
 namespace Azos.Platform
 {
   /// <summary>
-  /// Provides a thread-safe lock-free lookup by TKey of a finite(constrained by design) set of TValue items, such as system types.
+  /// Provides a thread-safe lock-free lookup by TKey of a finite(constrained by design to 512K) set of TValue items, such as system types.
   /// The set is constrained by design in two ways: it can only add items if they are not present in the set already,
-  /// and the total item count must be finite/limited by system design (e.g. system Type instances, Attribute instances etc.).
+  /// and the total item count must be finite/limited by system design (e.g. system Type instances, Attribute instances etc.), 512K is the hard maximum count limit.
   /// This class is used for efficient thread-safe caching of items by TKey, speculating on the fact that total set
   /// of items is limited and with time the system will add all of items, consequently no mutations will be necessary
   /// and all requests will be served by lock-free thread-safe read-only Get() operation on an immutable copy.
@@ -22,9 +22,22 @@ namespace Azos.Platform
   /// </summary>
   /// <typeparam name="TKey">Type of key to lookup-by</typeparam>
   /// <typeparam name="TValue">Type of value to map to key</typeparam>
-  /// <remarks>This is an advanced class which should rarely be used by business app developers</remarks>
+  /// <remarks>
+  /// This is an advanced class which should rarely be used by business app developers.
+  /// This is a high performance data structure is optimized specifically for read-heavy storage of the LIMITED set of system (e.g. Types)
+  /// objects with a maximum object count hard limit set to 512K.
+  /// DO NOT store business data which changes or has high value variability.
+  /// </remarks>
   public sealed class FiniteSetLookup<TKey, TValue>
   {
+    /// <summary>
+    /// Absolute maximum count of entries which this instance can contain.
+    /// If you ever get an error message below, you have misused this class as it may never contain such a great number of entries
+    /// </summary>
+    public const int MAX_ENTRIES = 512_000;
+    private static readonly string MAX_ENTRIES_CONDITION = $"{typeof(FiniteSetLookup<TKey, TValue>).DisplayNameWithExpandedGenericArgs()}.Count < MAX_ENTRIES({MAX_ENTRIES}) by design";
+
+
     private object m_Lock = new object();
     private volatile Dictionary<TKey, TValue> m_Data;
 
@@ -65,13 +78,20 @@ namespace Azos.Platform
     /// <summary>
     /// Tries to find a TValue by key in the set. If TKey is not present, then invokes a AddItem function
     /// </summary>
-    public TValue Get(TKey key)
+    public TValue Get(TKey key) => GetWithFlag(key).value;
+
+    /// <summary>
+    /// Tries to find a TValue by key in the set. If TKey is not present, then invokes a AddItem function
+    /// </summary>
+    public (TValue value, bool preExisted) GetWithFlag(TKey key)
     {
-      if (m_Data.TryGetValue(key, out var result)) return result; //lock free lookup
+      if (m_Data.TryGetValue(key, out var result)) return (result, true); //lock free lookup
 
       lock(m_Lock)
       {
-        if (m_Data.TryGetValue(key, out result)) return result;//2nd check is under the lock
+        if (m_Data.TryGetValue(key, out result)) return (result, true);//2nd check is under the lock
+
+        (m_Data.Count < MAX_ENTRIES).IsTrue(MAX_ENTRIES_CONDITION);
 
         result = AddItem(key);
 
@@ -81,7 +101,7 @@ namespace Azos.Platform
         m_Data = cache;//atomic
       }
 
-      return result;
+      return (result, false);
     }
 
     /// <summary>

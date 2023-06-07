@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -21,41 +20,8 @@ namespace Azos.Web
   /// <summary>
   /// Utility methods for making web calls
   /// </summary>
-  public static class WebCallExtensions
+  public static partial class WebCallExtensions
   {
-    /// <summary> Marker interface for traits applicable to making web calls</summary>
-    public interface ICallerAspect { }
-
-    /// <summary> Indicates that the caller is capable of providing DistributedCallFlow context </summary>
-    public interface IDistributedCallFlowAspect : ICallerAspect
-    {
-      /// <summary> If non-empty provides header name to be used for sending DistributedCallFlow object, otherwise a default name is used</summary>
-      string DistributedCallFlowHeader {  get; }
-
-      /// <summary>
-      /// Gets the distributed call flow or NULL if not present or not enabled
-      /// </summary>
-      DistributedCallFlow GetDistributedCallFlow();
-    }
-
-    /// <summary>
-    /// Designates the caller as authentication provider for remote impersonation - provides
-    /// header name and header value if caller impersonation is used
-    /// </summary>
-    public interface IAuthImpersonationAspect : ICallerAspect
-    {
-      /// <summary>
-      /// When non empty provides header name used for impersonation, otherwise standard HTTP `Authorization` header is used
-      /// </summary>
-      string AuthImpersonationHeader {  get; }
-
-      /// <summary>
-      /// Gets auth header value if impersonation is used or null
-      /// </summary>
-      string GetAuthImpersonationHeader();
-    }
-
-
     /// <summary>
     /// Sets maximum error content length in characters
     /// </summary>
@@ -73,30 +39,53 @@ namespace Azos.Web
 
 
     /// <summary>
-    /// Gets string response containing json and returns it as JsonDataMap
+    /// Gets string response containing json and returns it as JsonDataMap.
+    /// This method does not use headers and aspects ind is kept for legacy use
     /// </summary>
-    public static async Task<JsonDataMap> GetJsonMapAsync(this HttpClient client, string uri)
+    [Obsolete("This method does not support headers call flow and aspects. Consider using GetJsonMapAsync() instead.")]
+    public static async Task<JsonDataMap> GetJsonMapDirectAsync(this HttpClient client, string uri, JsonReadingOptions ropt = null)
     {
       var raw = await client.NonNull(nameof(client))
                             .GetStringAsync(uri.NonBlank(nameof(uri)))
                             .ConfigureAwait(false);
 
-      var jdm = raw.JsonToDataObject() as JsonDataMap;
+      var jdm = raw.JsonToDataObject(ropt: ropt ?? JsonReadingOptions.NoLimits) as JsonDataMap;
       return jdm.NonNull(StringConsts.WEB_CALL_RETURN_JSONMAP_ERROR.Args(raw.TakeFirstChars(32)));
     }
+
+
+    /// <summary>
+    /// Gets JsonDataMap result on success.
+    /// A body is a string, a binary blob or object converted to json using JsonWritingOptions
+    /// </summary>
+    public static async Task<JsonDataMap> GetJsonMapAsync(this HttpClient client,
+                                                          string uri,
+                                                          object body = null,
+                                                          string contentType = null,
+                                                          JsonWritingOptions options = null,
+                                                          bool fetchErrorContent = true,
+                                                          IEnumerable<KeyValuePair<string, string>> requestHeaders = null,
+                                                          Func<object> fGetIdentityContext = null,
+                                                          JsonReadingOptions ropt = null,
+                                                          bool requestBixon = false)
+     => await CallAndGetJsonMapAsync(client, uri, HttpMethod.Get, body, contentType, options, fetchErrorContent, requestHeaders, fGetIdentityContext, ropt, requestBixon).ConfigureAwait(false);
+
 
     /// <summary>
     /// Posts body into remote endpoint returning a JsonDataMap result on success.
     /// A body is a string, a binary blob or object converted to json using JsonWritingOptions
     /// </summary>
     public static async Task<JsonDataMap> PostAndGetJsonMapAsync(this HttpClient client,
-                                                                      string uri,
-                                                                      object body,
-                                                                      string contentType = null,
-                                                                      JsonWritingOptions options = null,
-                                                                      bool fetchErrorContent = true,
-                                                                      IEnumerable<KeyValuePair<string, string>> requestHeaders = null)
-     => await CallAndGetJsonMapAsync(client, uri, HttpMethod.Post, body, contentType, options, fetchErrorContent, requestHeaders).ConfigureAwait(false);
+                                                                  string uri,
+                                                                  object body,
+                                                                  string contentType = null,
+                                                                  JsonWritingOptions options = null,
+                                                                  bool fetchErrorContent = true,
+                                                                  IEnumerable<KeyValuePair<string, string>> requestHeaders = null,
+                                                                  Func<object> fGetIdentityContext = null,
+                                                                  JsonReadingOptions ropt = null,
+                                                                  bool requestBixon = false)
+     => await CallAndGetJsonMapAsync(client, uri, HttpMethod.Post, body, contentType, options, fetchErrorContent, requestHeaders, fGetIdentityContext, ropt, requestBixon).ConfigureAwait(false);
 
 
 
@@ -110,8 +99,11 @@ namespace Azos.Web
                                                                      string contentType = null,
                                                                      JsonWritingOptions options = null,
                                                                      bool fetchErrorContent = true,
-                                                                     IEnumerable<KeyValuePair<string, string>> requestHeaders = null)
-     => await CallAndGetJsonMapAsync(client, uri, HttpMethod.Put, body, contentType, options, fetchErrorContent, requestHeaders).ConfigureAwait(false);
+                                                                     IEnumerable<KeyValuePair<string, string>> requestHeaders = null,
+                                                                     Func<object> fGetIdentityContext = null,
+                                                                     JsonReadingOptions ropt = null,
+                                                                     bool requestBixon = false)
+     => await CallAndGetJsonMapAsync(client, uri, HttpMethod.Put, body, contentType, options, fetchErrorContent, requestHeaders, fGetIdentityContext, ropt, requestBixon).ConfigureAwait(false);
 
 
 
@@ -127,8 +119,11 @@ namespace Azos.Web
                                                                     string contentType = null,
                                                                     JsonWritingOptions options = null,
                                                                     bool fetchErrorContent = true,
-                                                                    IEnumerable<KeyValuePair<string, string>> requestHeaders = null)
-     => await CallAndGetJsonMapAsync(client, uri, PATCH, body, contentType, options, fetchErrorContent, requestHeaders).ConfigureAwait(false);
+                                                                    IEnumerable<KeyValuePair<string, string>> requestHeaders = null,
+                                                                    Func<object> fGetIdentityContext = null,
+                                                                    JsonReadingOptions ropt = null,
+                                                                    bool requestBixon = false)
+     => await CallAndGetJsonMapAsync(client, uri, PATCH, body, contentType, options, fetchErrorContent, requestHeaders, fGetIdentityContext, ropt, requestBixon).ConfigureAwait(false);
 
 
     /// <summary>
@@ -141,106 +136,11 @@ namespace Azos.Web
                                                                      string contentType = null,
                                                                      JsonWritingOptions options = null,
                                                                      bool fetchErrorContent = true,
-                                                                     IEnumerable<KeyValuePair<string, string>> requestHeaders = null)
-     => await CallAndGetJsonMapAsync(client, uri, HttpMethod.Delete, body, contentType, options, fetchErrorContent, requestHeaders).ConfigureAwait(false);
-
-
-
-    /// <summary>
-    /// Calls an arbitrary HttpMethod with the specified entity body on a remote endpoint returning a JsonDataMap result on success.
-    /// A body is a string, a binary blob or object converted to json using JsonWritingOptions
-    /// </summary>
-    public static async Task<JsonDataMap> CallAndGetJsonMapAsync(this HttpClient client,
-                                                                      string uri,
-                                                                      HttpMethod method,
-                                                                      object body,
-                                                                      string contentType = null,
-                                                                      JsonWritingOptions options = null,
-                                                                      bool fetchErrorContent = true,
-                                                                      IEnumerable<KeyValuePair<string, string>> requestHeaders = null)
-    {
-      client.NonNull(nameof(client));
-      method.NonNull(nameof(method));
-      uri.NonNull(nameof(uri));
-
-      HttpContent content = null;
-
-      if (body != null)
-      {
-        if (body is string strbody)
-        {
-          content = new StringContent(strbody, Encoding.UTF8, contentType.Default(ContentType.TEXT));
-        }
-        else if (body is byte[] binbody)
-        {
-          content = new ByteArrayContent(binbody);
-          var ctp = new MediaTypeHeaderValue(contentType.Default(ContentType.BINARY))
-          {
-            CharSet = Encoding.UTF8.WebName
-          };
-          content.Headers.ContentType = ctp;
-        }
-        else
-        {
-          var jsonToSend = body.ToJson(options ?? JsonWritingOptions.CompactRowsAsMap);
-          content = new StringContent(jsonToSend, Encoding.UTF8, ContentType.JSON);
-        }
-      }
-
-      using (var request = new HttpRequestMessage(method, uri))
-      {
-        if (content != null)
-          request.Content = content;
-
-        if (requestHeaders != null)
-        {
-          foreach(var pair in requestHeaders)
-            request.Headers.Add(pair.Key, pair.Value);
-        }
-
-        if (client is IDistributedCallFlowAspect dca)
-        {
-          var dcf = dca.GetDistributedCallFlow();
-          if (dcf != null)
-          {
-            var hdr = dca.DistributedCallFlowHeader.Default(CoreConsts.HTTP_HDR_DEFAULT_CALL_FLOW);
-            request.Headers.Add(hdr, dcf.ToHeaderValue());
-          }
-        }
-
-        if (client is IAuthImpersonationAspect aia)
-        {
-          var token = aia.GetAuthImpersonationHeader();
-          if (token.IsNotNullOrWhiteSpace())
-          {
-            var hdr = aia.AuthImpersonationHeader.Default(WebConsts.HTTP_HDR_AUTHORIZATION);
-            request.Headers.Add(hdr, token);
-          }
-        }
-
-        using (var response = await client.SendAsync(request, fetchErrorContent ? HttpCompletionOption.ResponseContentRead
-                                                                                : HttpCompletionOption.ResponseHeadersRead)
-                                          .ConfigureAwait(false))
-        {
-          var isSuccess = response.IsSuccessStatusCode;
-          string raw = string.Empty;
-          if (isSuccess || fetchErrorContent)
-            raw = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-          if (!isSuccess)
-            throw new WebCallException(StringConsts.WEB_CALL_UNSUCCESSFUL_ERROR.Args(uri.SplitKVP('?').Key.TakeLastChars(64),
-                                                                                    (int)response.StatusCode,
-                                                                                    response.StatusCode),
-                                       uri,
-                                       method.Method,
-                                       (int)response.StatusCode,
-                                       response.ReasonPhrase,
-                                       raw.TakeFirstChars(CALL_ERROR_CONTENT_MAX_LENGTH, "..."));
-
-          return (raw.JsonToDataObject() as JsonDataMap).NonNull(StringConsts.WEB_CALL_RETURN_JSONMAP_ERROR.Args(raw.TakeFirstChars(48)));
-        }//using response
-      }//using request
-    }
+                                                                     IEnumerable<KeyValuePair<string, string>> requestHeaders = null,
+                                                                     Func<object> fGetIdentityContext = null,
+                                                                     JsonReadingOptions ropt = null,
+                                                                     bool requestBixon = false)
+     => await CallAndGetJsonMapAsync(client, uri, HttpMethod.Delete, body, contentType, options, fetchErrorContent, requestHeaders, fGetIdentityContext, ropt, requestBixon).ConfigureAwait(false);
 
 
     /// <summary>
@@ -297,6 +197,18 @@ namespace Azos.Web
       Aver.IsNotNull(result, "['data'] is not map");
 
       return result;
+    }
+
+    /// <summary>
+    /// Processes the "wrap" Json protocol with JsonDataMap such as: '{OK: true, data: {...map...}}'
+    /// Throws averment exceptions if OK!=true, no 'data' key was returned or data is not a json map.
+    /// Converts map to TypeDoc of type T
+    /// </summary>
+    public static T UnwrapPayloadDoc<T>(this JsonDataMap data, bool fromUI = true, JsonReader.DocReadOptions? options = null) where T : TypedDoc
+    {
+      var map = UnwrapPayloadMap(data);
+
+      return JsonReader.ToDoc<T>(map, fromUI, options);
     }
 
     /// <summary>

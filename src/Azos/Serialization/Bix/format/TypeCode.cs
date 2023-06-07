@@ -61,6 +61,9 @@ namespace Azos.Serialization.Bix
     Atom,
     AtomNull,
 
+    EntityId,
+    EntityIdNull,
+
     Bool,
     BoolNull,
 
@@ -124,7 +127,10 @@ namespace Azos.Serialization.Bix
     PilePointerNull,
 
     NLSMap,
-    NLSMapNull
+    NLSMapNull,
+
+    RGDID,
+    RGDIDNull,
   }
 
 }

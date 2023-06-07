@@ -169,6 +169,19 @@ namespace Azos.Data
     public static GDID? AsNullableGDID(this string val, GDID? dflt = null)
       => ObjectValueConversion.AsNullableGDID(val, dflt);
 
+
+    public static RGDID AsRGDID(this string val, RGDID? dflt = null)
+    {
+      if (dflt.HasValue)
+        return ObjectValueConversion.AsRGDID(val, dflt.Value);
+      else
+        return ObjectValueConversion.AsRGDID(val);
+    }
+
+    public static RGDID? AsNullableRGDID(this string val, RGDID? dflt = null)
+      => ObjectValueConversion.AsNullableRGDID(val, dflt);
+
+
     public static GDIDSymbol AsGDIDSymbol(this string val, GDIDSymbol? dflt = null)
     {
       if (dflt.HasValue)
@@ -303,6 +316,19 @@ namespace Azos.Data
     public static Atom? AsNullableAtom(this string val, Atom? dflt = null)
     => ObjectValueConversion.AsNullableAtom(val, dflt);
 
+
+
+    public static EntityId AsEntityId(this string val)
+    => ObjectValueConversion.AsEntityId(val);
+
+    public static EntityId AsEntityId(this string val, EntityId dflt)
+    => ObjectValueConversion.AsEntityId(val, dflt);
+
+    public static EntityId? AsNullableEntityId(this string val, EntityId? dflt = null)
+    => ObjectValueConversion.AsNullableEntityId(val, dflt);
+
+
+
     private static readonly CultureInfo INVARIANT = CultureInfo.InvariantCulture;
 
     private static readonly Dictionary<Type, Func<string, bool, object>> s_CONV = new Dictionary<Type, Func<string, bool, object>>
@@ -325,7 +351,9 @@ namespace Azos.Data
       {typeof(TimeSpan) , (val, strict) => strict ? TimeSpan.Parse(val, INVARIANT) : AsTimeSpanOrThrow(val) },
       {typeof(DateTime) , (val, strict) => strict ? DateTime.Parse(val, INVARIANT) : AsDateTimeOrThrow(val) },
       {typeof(Atom)     , (val, strict) => strict ? AsAtom(val) : AsAtom(val, Atom.ZERO) },
+      {typeof(EntityId) , (val, strict) => strict ? AsEntityId(val) : AsEntityId(val, EntityId.EMPTY) },
       {typeof(GDID)     , (val, strict) => strict ? GDID.Parse(val) : AsGDID(val) },
+      {typeof(RGDID)    , (val, strict) => strict ? RGDID.Parse(val) : AsRGDID(val) },
       {typeof(GDIDSymbol),
       (val, strict) =>
       {
@@ -362,7 +390,9 @@ namespace Azos.Data
       {typeof(TimeSpan?), (val, strict) => string.IsNullOrWhiteSpace(val) ? (TimeSpan?)null : (strict ? TimeSpan.Parse(val, INVARIANT) : AsNullableTimeSpan(val)) },
       {typeof(DateTime?), (val, strict) => string.IsNullOrWhiteSpace(val) ? (DateTime?)null : (strict ? DateTime.Parse(val, INVARIANT) : AsNullableDateTime(val)) },
       {typeof(Atom?),     (val, strict) => string.IsNullOrWhiteSpace(val) ? (Atom?)null     : (strict ? AsAtom(val) : AsAtom(val, Atom.ZERO)) },
+      {typeof(EntityId?), (val, strict) => string.IsNullOrWhiteSpace(val) ? (EntityId?)null : (strict ? AsEntityId(val) : AsEntityId(val, EntityId.EMPTY)) },
       {typeof(GDID?),     (val, strict) => string.IsNullOrWhiteSpace(val) ? (GDID?)null     : (strict ? GDID.Parse(val) : AsGDID(val)) },
+      {typeof(RGDID?),    (val, strict) => string.IsNullOrWhiteSpace(val) ? (RGDID?)null     : (strict ? RGDID.Parse(val) : AsRGDID(val)) },
       {typeof(GDIDSymbol?),
       (val, strict) =>
       {

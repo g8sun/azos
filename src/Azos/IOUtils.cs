@@ -132,6 +132,11 @@ namespace Azos
       }
     }
 
+    /// <summary>
+    /// Returns true if the IPAddress is not null and is not a loopback address
+    /// </summary>
+    public static bool IsSpecified(this IPAddress address)
+     => address != null && !IPAddress.IsLoopback(address);
 
     /// <summary>
     /// Generates GUID based on a string MD5 hash
@@ -331,32 +336,61 @@ namespace Azos
 
     /// <summary>
     /// Runs specified process and waits for termination returning standard process output.
-    /// This is a blocking call
+    /// This is a blocking call for up to msTimeout unless the indefinite timeout is specified.
     /// </summary>
-    public static string RunAndCompleteProcess(string name, string args)
+    public static (int exitCode, string stdOut, bool hasExited, bool wasKilled) RunAndCompleteProcess(string name,
+                                                                      string args,
+                                                                      string workingDirectory = null,
+                                                                      int msTimeout = 0,
+                                                                      bool kill = true)
     {
-      string std_out = string.Empty;
+      int exitCode = -1000000000;
+      bool hasExited = false;
+      bool wasKilled = false;
+      string stdOut = string.Empty;
 
       Process p = new Process();
       p.StartInfo.FileName = name;
+      if (workingDirectory.IsNotNullOrWhiteSpace())
+      {
+        p.StartInfo.WorkingDirectory = workingDirectory;
+      }
       p.StartInfo.Arguments = args;
       p.StartInfo.UseShellExecute = false;
       p.StartInfo.CreateNoWindow = true;
       p.StartInfo.RedirectStandardOutput = true;
       p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-      p.Start();
 
+      p.Start();
       try
       {
-        std_out = p.StandardOutput.ReadToEnd();
-        p.WaitForExit();
+        stdOut = p.StandardOutput.ReadToEnd();
+        if (msTimeout > 0)
+        {
+          p.WaitForExit(msTimeout);
+        }
+        else
+        {
+          p.WaitForExit();
+        }
+
+        if (p.HasExited)
+        {
+          hasExited = true;
+          exitCode = p.ExitCode;
+        }
+        else if (kill)
+        {
+          p.Kill();
+          wasKilled = true;
+        }
       }
       finally
       {
         p.Close();
       }
 
-      return std_out;
+      return (exitCode, stdOut, hasExited, wasKilled);
     }
 
 
@@ -625,6 +659,17 @@ namespace Azos
     public static short ReadBEShort(this byte[] buf, ref int idx)
     {
       return (short)(
+                   (((int)buf[idx++] << 8) & 0xff00) +
+                   (((int)buf[idx++]) & 0xff)
+                  );
+    }
+
+    /// <summary>
+    /// Reads a ushort encoded as big endian from buffer at the specified index
+    /// </summary>
+    public static ushort ReadBEUShort(this byte[] buf, ref int idx)
+    {
+      return (ushort)(
                    (((int)buf[idx++] << 8) & 0xff00) +
                    (((int)buf[idx++]) & 0xff)
                   );
@@ -983,6 +1028,15 @@ namespace Azos
     /// Writes a short encoded as big endian to buffer at the specified index
     /// </summary>
     public static void WriteBEShort(this byte[] buf, int idx, short value)
+    {
+      buf[idx + 0] = (byte)(value >> 8);
+      buf[idx + 1] = (byte)(value);
+    }
+
+    /// <summary>
+    /// Writes a ushort encoded as big endian to buffer at the specified index
+    /// </summary>
+    public static void WriteBEUShort(this byte[] buf, int idx, ushort value)
     {
       buf[idx + 0] = (byte)(value >> 8);
       buf[idx + 1] = (byte)(value);
@@ -1447,9 +1501,9 @@ namespace Azos
     public static string FormatByteSizeWithPrefix(long size, bool longPfx = false)
     {
       if (size <                1024) return "{1:n0} {0}".Args(longPfx ? "bytes" : "bt", size);
-      if (size <             750_000) return "{1:n1} {0}".Args(longPfx ? "kilo bytes" : "kb",size / 1024f);
-      if (size <         750_000_000) return "{1:n1} {0}".Args(longPfx ? "mega bytes" : "mb",size / 1_048_576f);
-      if (size <     750_000_000_000) return "{1:n1} {0}".Args(longPfx ? "giga bytes" : "gb",size / 1_073_741_824f);
+      if (size <             750_000) return "{1:n1} {0}".Args(longPfx ? "kilo bytes" : "kb", size / 1024f);
+      if (size <         750_000_000) return "{1:n1} {0}".Args(longPfx ? "mega bytes" : "mb", size / 1_048_576f);
+      if (size <     750_000_000_000) return "{1:n1} {0}".Args(longPfx ? "giga bytes" : "gb", size / 1_073_741_824f);
       if (size < 750_000_000_000_000) return "{1:n1} {0}".Args(longPfx ? "tera bytes" : "tb", size / 1_099_511_627_776f);
       return "{1:n1} {0}".Args(longPfx ? "peta bytes" : "pb", size / 1_125_899_906_842_624f);
     }
@@ -1459,14 +1513,16 @@ namespace Azos
     /// Creates a hex editor like hex / char dump of a byte[] value
     /// printing verbatim binary char values
     /// </summary>
-    public static string ToHexDump(this byte[] buf)
+    public static string ToHexDump(this byte[] buf, int count = 0)
     {
       if (buf == null) return null;
       var result = new StringBuilder();
       var txt = new StringBuilder();
 
       var i = 0;
-      for (; i < buf.Length; i++)
+      if (count <= 0) count = buf.Length;
+      count = count.KeepBetween(1, buf.Length);
+      for (; i < count; i++)
       {
         var c = (char)buf[i];
         if (i % 16 == 0)

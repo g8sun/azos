@@ -622,13 +622,21 @@ namespace Azos.Data
 
           if (decimal.TryParse(sval, out decimal dcval)) return dcval != 0;
         }
-        else if (val is TriStateBool) { return ((TriStateBool)val) == TriStateBool.True; }
-        else if (val is char) { var c = (char)val; if (c == 'T' || c == 't' || c == 'Y' || c == 'y' || c == '1') return true; }
-        else if (val is int) { if ((int)val != 0) return true; }
-        else if (val is double) { if ((double)val != 0) return true; }
-        else if (val is decimal) { if ((decimal)val != 0) return true; }
-        else if (val is TimeSpan) { if (((TimeSpan)val).Ticks != 0) return true; }
-        else if (val is DateTime) { if (((DateTime)val).Ticks != 0) return true; }
+        else if (val is TriStateBool tsval)  return tsval == TriStateBool.True;
+        else if (val is char c)              return c == 'T' || c == 't' || c == 'Y' || c == 'y' || c == '1';
+        else if (val is sbyte sbval)         return sbval != 0;
+        else if (val is int ival)            return ival != 0;
+        else if (val is short sval)          return sval != 0;
+        else if (val is long lval)           return lval != 0L;
+        else if (val is byte bval)           return bval != 0;
+        else if (val is uint uival)          return uival != 0u;
+        else if (val is ushort usval)        return usval != 0;
+        else if (val is ulong ulval)         return ulval != 0ul;
+        else if (val is float fval)          return fval != 0f;
+        else if (val is double dval)         return dval != 0d;
+        else if (val is decimal dcval)       return dcval != 0m;
+        else if (val is TimeSpan tspval)     return tspval.Ticks != 0;
+        else if (val is DateTime dtval)      return dtval.Ticks != 0;
 
         return Convert.ToBoolean(val, INVARIANT);
       }
@@ -813,6 +821,52 @@ namespace Azos.Data
         return dflt;
       }
     }
+
+
+    public static RGDID AsRGDID(this object val)
+    {
+      if (val == null) return RGDID.ZERO;
+
+      if (val is RGDID rgdval) return rgdval;
+
+      if (val is string sval)
+      {
+        if (RGDID.TryParse(sval, out RGDID rgdid)) return rgdid;
+      }
+
+      if (val is byte[] bval) { return new RGDID(bval); }
+
+      throw new AzosException($"AsRGDID({val.GetType().DisplayNameWithExpandedGenericArgs()})");
+    }
+
+    public static RGDID AsRGDID(this object val, RGDID dflt, ConvertErrorHandling handling = ConvertErrorHandling.ReturnDefault)
+    {
+      try
+      {
+        if (val == null) return dflt;
+        return val.AsRGDID();
+      }
+      catch
+      {
+        if (handling != ConvertErrorHandling.ReturnDefault) throw;
+        return dflt;
+      }
+    }
+
+    public static RGDID? AsNullableRGDID(this object val, RGDID? dflt = null, ConvertErrorHandling handling = ConvertErrorHandling.ReturnDefault)
+    {
+      try
+      {
+        if (val == null) return null;
+        return val.AsRGDID();
+      }
+      catch
+      {
+        if (handling != ConvertErrorHandling.ReturnDefault) throw;
+        return dflt;
+      }
+    }
+
 
     //20160622 DKh
     public static GDIDSymbol AsGDIDSymbol(this object val)
@@ -1026,6 +1080,50 @@ namespace Azos.Data
       {
         if (val == null) return null;
         return val.AsAtom();
+      }
+      catch
+      {
+        if (handling != ConvertErrorHandling.ReturnDefault) throw;
+        return dflt;
+      }
+    }
+
+
+    public static EntityId AsEntityId(this object val)
+    {
+      if (val == null) return new EntityId();
+
+      if (val is EntityId existing) return existing;
+
+      if (val is string str)
+      {
+        str = str.Trim();
+        return EntityId.Parse(str);
+      }
+
+      return EntityId.Parse(Convert.ToString(val, INVARIANT));
+    }
+
+    public static EntityId AsEntityId(this object val, EntityId dflt, ConvertErrorHandling handling = ConvertErrorHandling.ReturnDefault)
+    {
+      try
+      {
+        if (val == null) return dflt;
+        return val.AsEntityId();
+      }
+      catch
+      {
+        if (handling != ConvertErrorHandling.ReturnDefault) throw;
+        return dflt;
+      }
+    }
+
+    public static EntityId? AsNullableEntityId(this object val, EntityId? dflt = null, ConvertErrorHandling handling = ConvertErrorHandling.ReturnDefault)
+    {
+      try
+      {
+        if (val == null) return null;
+        return val.AsEntityId();
       }
       catch
       {

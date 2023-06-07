@@ -14,8 +14,9 @@ namespace Azos.Data
 {
   /// <summary>
   /// Provides base for rowsets.
-  /// Rowsets are mutable lists of documents where all documents(rows) must adhere to the same schema (hence called "rows"),
-  /// however a rowset may contain a mix of dynamic and typed documents as long as they have the same schema.
+  /// Rowsets are mutable lists of documents where all documents(rows) must adhere to the same/compatible schema (hence called "rows"),
+  /// however a rowset may contain a mix of dynamic and typed documents as long as they have the same or compatible schema.
+  /// Two schemas are compatible if they are equal or both represent typedDocs which extend the schema of rowset.
   /// Rowsets are not thread-safe
   /// </summary>
   [Serializable]
@@ -550,14 +551,22 @@ namespace Azos.Data
     /// </summary>
     public void WriteAsJson(System.IO.TextWriter wri, int nestingLevel, JsonWritingOptions options = null)
     {
+      var metadata = options != null && options.RowsetMetadata;
+      var map = WriteAsJsonIntoMap(metadata);
+      JsonWriter.WriteMap(wri, map, nestingLevel, options);
+    }
+
+    /// <summary>
+    /// Writes as json into JsonDataMap
+    /// </summary>
+    public JsonDataMap WriteAsJsonIntoMap(bool metadata)
+    {
       var tp = GetType();
 
-      var metadata = options != null && options.RowsetMetadata;
-
-      var map = new Dictionary<string, object>//A root JSON object is needed for security, as some browsers can EXECUTE a valid JSON root array
-        {
+      var map = new JsonDataMap//A root JSON object is needed for security, as some browsers can EXECUTE a valid JSON root array
+      {
           {"Rows", m_List}
-        };
+      };
 
       if (metadata)
       {
@@ -567,7 +576,7 @@ namespace Azos.Data
         map.Add("Schema", m_Schema);
       }
 
-      JsonWriter.WriteMap(wri, map, nestingLevel, options);
+      return map;
     }
 
     #endregion
@@ -575,11 +584,11 @@ namespace Azos.Data
     #region .Protected
 
     /// <summary>
-    /// Checks argument for being non-null and of the same schema with this rowset
+    /// Checks argument for being non-null and of the same or compatible  schema with this rowset
     /// </summary>
     protected void Check(Doc doc)
     {
-      if (doc == null || m_Schema != doc.Schema)
+      if (doc == null || !m_Schema.IsCompatibleBaseFor(doc.Schema))
         throw new DataException(StringConsts.CRUD_ROWSET_OPERATION_ROW_IS_NULL_OR_SCHEMA_MISMATCH_ERROR);
     }
 

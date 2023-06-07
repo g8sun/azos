@@ -7,17 +7,17 @@
 using System.Threading.Tasks;
 
 using Azos.Apps.Injection;
-using Azos.Security.Web;
+using Azos.Security.Sky;
 using Azos.Wave.Mvc;
 
-namespace Azos.Web.Messaging.Services.Server
+namespace Azos.Sky.Messaging.Services.Server
 {
   /// <summary>
   /// Provides API controller service for Web Messaging functionality
   /// </summary>
   [NoCache]
   [ApiControllerDoc(
-    BaseUri = "/message",
+    BaseUri = "/messaging",
     Title = "Message management",
     Description = @"Sends messages (e.g. email, text, fax) to recipient/s via any of the configured messaging channels",
     ResponseHeaders = new[] { API_DOC_HDR_NO_CACHE }
@@ -45,7 +45,7 @@ namespace Azos.Web.Messaging.Services.Server
 
 
     [ApiEndpointDoc(
-      Uri = "send",
+      Uri = "sender",
       Title = "Sends a single message envelope",
       Description = "Sends a single message envelope returning unique ID for the sent message; the ID can be later used for querying",
       Methods = new[] { "POST: post Json message envelope, get Json with unique message id" },
@@ -55,7 +55,7 @@ namespace Azos.Web.Messaging.Services.Server
       TypeSchemas = new[] { typeof(MessageEnvelope) }
     )]
     [MessagingPermission(MessagingAccessLevel.Send)]
-    [ActionOnPost(Name = "send"), AcceptsJson]
+    [ActionOnPost(Name = "sender"), AcceptsJson]
     public async Task<object> SendMessage(MessageEnvelope envelope) => await SaveNewAsync(envelope).ConfigureAwait(false);
 
 
@@ -67,7 +67,7 @@ namespace Azos.Web.Messaging.Services.Server
       RequestHeaders = new[] { "Accept: application/json (required)" },
       ResponseContent = "Json with message content without attachment bodies",
       RequestQueryParameters = new[] { "msgId: id of message that was assigned on message send" },
-      TypeSchemas = new[] { typeof(Azos.Web.Messaging.Message) }
+      TypeSchemas = new[] { typeof(Azos.Sky.Messaging.Message) }
     )]
     [MessagingPermission(MessagingAccessLevel.QueryOwn)]
     [ActionOnGet(Name = "message"), AcceptsJson]
@@ -82,7 +82,7 @@ namespace Azos.Web.Messaging.Services.Server
       ResponseContent = "Json with message attachment content body",
       RequestQueryParameters = new[] { "msgId: id of message that was assigned on message send",
                                        "attId: int sequence of attachment in the message" },
-      TypeSchemas = new[] { typeof(Azos.Web.Messaging.Message), typeof(Azos.Web.Messaging.Message.Attachment) }
+      TypeSchemas = new[] { typeof(Azos.Sky.Messaging.Message), typeof(Azos.Sky.Messaging.Message.Attachment) }
     )]
     [MessagingPermission(MessagingAccessLevel.QueryOwn)]
     [ActionOnGet(Name = "attachment"), AcceptsJson]
@@ -96,7 +96,7 @@ namespace Azos.Web.Messaging.Services.Server
       RequestHeaders = new[] { "Accept: application/json (required)" },
       ResponseContent = "Json with message log",
       RequestQueryParameters = new[] { "msgId: id of message that was assigned on message send"},
-      TypeSchemas = new[] { typeof(Azos.Web.Messaging.Message), typeof(MessageStatusLog) }
+      TypeSchemas = new[] { typeof(Azos.Sky.Messaging.Message), typeof(MessageStatusLog) }
     )]
     [MessagingPermission(MessagingAccessLevel.QueryOwn)]
     [ActionOnGet(Name = "status"), AcceptsJson]

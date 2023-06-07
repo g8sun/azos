@@ -19,6 +19,9 @@ using Azos.Serialization.JSON;
 using Azos.Data;
 
 using WaveTestSite.Pages;
+using Azos.Serialization.Bix;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 
 namespace WaveTestSite.Controllers
 {
@@ -28,6 +31,33 @@ namespace WaveTestSite.Controllers
   [ApiControllerDoc(BaseUri ="/mvc/tester", Title = "Tester", Description ="Testing controller")]
   public class Tester : Controller
   {
+      [Action]
+      public object Story(bool buffered = false, int len = 500)
+      {
+        WorkContext.Response.Buffered = buffered;
+        return Azos.Text.NaturalTextGenerator.Generate(len.KeepBetween(1, 128*1024));
+      }
+
+      [Action]
+      public Task<object> StoryAsync(bool buffered = false, int len = 500)
+      {
+        WorkContext.Response.Buffered = buffered;
+        return Task.FromResult<object>(Azos.Text.NaturalTextGenerator.Generate(len.KeepBetween(1, 128 * 1024)));
+      }
+
+      [Action]
+      public object Error(string text = "Unspecified text")
+      {
+        throw new AzosException("Error thrown with: "+ text);
+      }
+
+      [Action]
+      public async Task<object> ErrorAsync(string text = "Unspecified text async")
+      {
+        await Task.Delay(1000);
+        throw new AzosException("Async Error thrown with: " + text);
+      }
+
       [Action, ApiEndpointDoc]
       public object AboutUs()
       {
@@ -36,7 +66,7 @@ namespace WaveTestSite.Controllers
 
 
       [Action, ApiEndpointDoc]
-      public void SlowImage(string url, int dbDelayMs = 100, int netDelayMs = 0)
+      public async Task SlowImage(string url, int dbDelayMs = 100, int netDelayMs = 0)
       {
         WorkContext.Response.ContentType = Azos.Web.ContentType.JPEG;
         WorkContext.Response.SetCacheControlHeaders(Azos.Web.CacheControl.PrivateMaxAgeSec(2), false);
@@ -45,7 +75,7 @@ namespace WaveTestSite.Controllers
         Thread.Sleep(dbDelayMs);
 
         // get image from url or make random image
-        var stream = WorkContext.Response.GetDirectOutputStreamForWriting();
+        var stream = await WorkContext.Response.GetDirectOutputStreamForWritingAsync();
         using (var image = string.IsNullOrWhiteSpace(url) ? makeRandomImage() : downloadImage(url))
         {
           var buffer = new byte[255];
@@ -68,9 +98,9 @@ namespace WaveTestSite.Controllers
       [Action, ApiEndpointDoc]
       public object Zekret()
       {
-        var cookie = new Cookie("ZEKRET","Hello");
+        var cookie = new CookieOptions();
         cookie.Path = "/";
-        WorkContext.Response.AppendCookie(cookie);
+        WorkContext.Response.AppendCookie("ZEKRET", "Hello", cookie);
         return new Redirect("/pages/Welcome");
       }
 
@@ -100,6 +130,12 @@ namespace WaveTestSite.Controllers
       public string Multiply(int a=2, int b=3, string text = "Was multiplied")
       {
         return "{0} {1}".Args(text, a*b);
+      }
+
+      [Action, ApiEndpointDoc]
+      public string Divide(double a = 1, double b = 1, string text = "Was divided")
+      {
+        return "{0} {1}".Args(text, a / b);
       }
 
       [Action, ApiEndpointDoc]
@@ -173,7 +209,30 @@ namespace WaveTestSite.Controllers
         };
       }
 
-      [Action, ApiEndpointDoc]
+      [Action]
+      [ApiEndpointDoc(Uri = "echolimits", Title = "Payload Echo", Description = "Echoes back the payload supplied as JSON map")]
+      [JsonReadingOptions(MaxObjectItems = 5,
+                          MaxDepth = 4,
+                          MaxKeyLength = 10,
+                          MaxObjects = 10,
+                          MaxArrays = 11,
+                          MaxArrayItems = 3,
+                          MaxCharLength = 4000,
+                          MaxStringLength = 100,
+                          MaxCommentLength = 25)]
+      public object EchoLimits(JsonDataMap data)
+      {
+        return new
+        {
+          ServerMessage = "You have supplied content, set limits, and here is my response",
+          ServerDateTime = DateTime.Now,
+          RequestedData = data,
+
+          limits = WorkContext.JsonOptions
+        };
+      }
+
+     [Action, ApiEndpointDoc]
       public object CAPTCHA(string key=null)
       {
         WorkContext.NeedsSession();
@@ -328,7 +387,7 @@ namespace WaveTestSite.Controllers
 
      private Stream downloadImage(string url)
      {
-       var webClient = new WebClient();
+       using var webClient = new WebClient();
        byte[] imageBytes = webClient.DownloadData(url);
        return new MemoryStream(imageBytes);
      }
@@ -339,7 +398,7 @@ namespace WaveTestSite.Controllers
 
         public enum StatusCode{None=0 , Beginner, Advanced, Master}
 
-
+        [Bix("d5af97b4-33df-433a-a11e-b69b5169c2c2")]
         public class Person : TypedDoc
         {
           [Field(metadata: "z=true b=234")]

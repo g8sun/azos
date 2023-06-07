@@ -21,6 +21,8 @@ namespace Azos.Data.Access
 
     public override string ComponentLogTopic => CoreConsts.DATA_TOPIC;
 
+    public string Name => nameof(NOPDataStore);
+
     public string TargetName => TargetedAttribute.ANY_TARGET;
 
     public bool InstrumentationEnabled{ get{return false;} set{}}
@@ -49,5 +51,7 @@ namespace Azos.Data.Access
     public void Configure(IConfigSectionNode node)
     {
     }
+
+    public int DefaultTimeoutMs { get; set; }
   }
 }

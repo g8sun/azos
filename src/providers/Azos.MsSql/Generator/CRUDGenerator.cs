@@ -9,16 +9,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Data;
 
 using Azos.Serialization.JSON;
-using System.Data.SqlClient;
-using System.Data;
+using Microsoft.Data.SqlClient;
 
 namespace Azos.Data.Access.MsSql
 {
   internal static class CRUDGenerator
   {
-
       public static async Task<int> CRUDInsert(MsSqlDataStoreBase store, SqlConnection cnn, SqlTransaction trans, Doc doc, FieldFilterFunc filter)
       {
         try
@@ -478,6 +477,16 @@ namespace Azos.Data.Access.MsSql
           value = (decimal)gdid.ID;
           convertedDbType = SqlDbType.Decimal;
         }
+      }
+      else if (value is RGDID rgdid)
+      {
+        if (rgdid.IsZero)
+        {
+          return (null, SqlDbType.Binary);
+        }
+
+        value = (object)rgdid.Bytes;//be very careful with byte ordering of RGDID for index optimization
+        convertedDbType = SqlDbType.Binary;
       }
       else if (value is bool)
       {

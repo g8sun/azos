@@ -8,7 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
-
+using Azos.Data;
 using Azos.Serialization.JSON;
 
 namespace Azos.Serialization.Bix
@@ -20,9 +20,35 @@ namespace Azos.Serialization.Bix
   {
     public BixReader(Stream stream) => m_Stream = stream;
 
-    private readonly Stream m_Stream;
+    internal readonly Stream m_Stream;
 
     public bool IsAssigned => m_Stream != null;
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TypeCode ReadTypeCode() => (TypeCode)ReadByte();
+
+    #region FIXED bits
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public uint ReadFixedBE32bits()
+    {
+      uint result =
+       (((uint)ReadByte()) << 24) |
+       (((uint)ReadByte()) << 16) |
+       (((uint)ReadByte()) << 8)  |
+       ((uint)ReadByte());
+
+      return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ulong ReadFixedBE64bits()
+    {
+      uint hi = ReadFixedBE32bits();
+      uint lo = ReadFixedBE32bits();
+      return ((ulong)hi << 32) | lo;
+    }
+    #endregion
 
     #region BYTE
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1084,7 +1110,7 @@ namespace Azos.Serialization.Bix
     public Data.GDID ReadGDID()
     {
       var buf = Format.GetBuff32();
-      ReadFromStream(buf, sizeof(uint) + sizeof(ulong));
+      ReadFromStream(buf, GDID.BYTE_SIZE);
       return new Data.GDID(buf);
     }
 
@@ -1133,6 +1159,62 @@ namespace Azos.Serialization.Bix
       return result;
     }
     #endregion
+
+
+    #region RGDID
+    public Data.RGDID ReadRGDID()
+    {
+      var buf = Format.GetBuff32();
+      ReadFromStream(buf, RGDID.BYTE_SIZE);
+      return new Data.RGDID(buf);
+    }
+
+    public Data.RGDID? ReadNullableRGDID()
+    {
+      if (ReadBool()) return ReadRGDID();
+      return null;
+    }
+
+
+    public TCollection ReadRGDIDCollection<TCollection>() where TCollection : class, ICollection<Data.RGDID>, new()
+     => ReadCollection<TCollection, Data.RGDID>(bix => bix.ReadRGDID());
+
+    public Data.RGDID[] ReadRGDIDArray()
+    {
+      if (!ReadBool()) return null;
+
+      var len = ReadUint();
+      if (len > Format.MAX_RGDID_ARRAY_LEN)
+        throw new BixException(StringConsts.BIX_READ_X_ARRAY_MAX_SIZE_ERROR.Args(len, "rgdid", Format.MAX_RGDID_ARRAY_LEN));
+
+      var result = new Data.RGDID[len];
+
+      for (int i = 0; i < len; i++)
+        result[i] = ReadRGDID();
+
+      return result;
+    }
+
+    public TCollection ReadNullableRGDIDCollection<TCollection>() where TCollection : class, ICollection<Data.RGDID?>, new()
+      => ReadCollection<TCollection, Data.RGDID?>(bix => bix.ReadNullableRGDID());
+
+    public Data.RGDID?[] ReadNullableRGDIDArray()
+    {
+      if (!ReadBool()) return null;
+
+      var len = ReadUint();
+      if (len > Format.MAX_RGDID_ARRAY_LEN)
+        throw new BixException(StringConsts.BIX_READ_X_ARRAY_MAX_SIZE_ERROR.Args(len, "rgdid?", Format.MAX_RGDID_ARRAY_LEN));
+
+      var result = new Data.RGDID?[len];
+
+      for (int i = 0; i < len; i++)
+        result[i] = ReadNullableRGDID();
+
+      return result;
+    }
+    #endregion
+
 
     #region FID
     public FID ReadFID()
@@ -1408,12 +1490,61 @@ namespace Azos.Serialization.Bix
     }
     #endregion
 
+    #region EntityId
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EntityId ReadEntityId() => new EntityId(ReadString(), ReadAtom(), ReadAtom(), ReadAtom());
+
+    public EntityId? ReadNullableEntityId()
+    {
+      if (ReadBool()) return ReadEntityId();
+      return null;
+    }
+
+    public TCollection ReadEntityIdCollection<TCollection>() where TCollection : class, ICollection<EntityId>, new()
+    => ReadCollection<TCollection, EntityId>(bix => bix.ReadEntityId());
+
+    public EntityId[] ReadEntityIdArray()
+    {
+      if (!ReadBool()) return null;
+
+      var len = ReadUint();
+      if (len > Format.MAX_ENTITYID_ARRAY_LEN)
+        throw new BixException(StringConsts.BIX_READ_X_ARRAY_MAX_SIZE_ERROR.Args(len, "entityid", Format.MAX_ENTITYID_ARRAY_LEN));
+
+      var result = new EntityId[len];
+
+      for (int i = 0; i < len; i++)
+        result[i] = ReadEntityId();
+
+      return result;
+    }
+
+    public TCollection ReadNullableEntityIdCollection<TCollection>() where TCollection : class, ICollection<EntityId?>, new()
+      => ReadCollection<TCollection, EntityId?>(bix => bix.ReadNullableEntityId());
+
+    public EntityId?[] ReadNullableEntityIdArray()
+    {
+      if (!ReadBool()) return null;
+
+      var len = ReadUint();
+      if (len > Format.MAX_ENTITYID_ARRAY_LEN)
+        throw new BixException(StringConsts.BIX_READ_X_ARRAY_MAX_SIZE_ERROR.Args(len, "entityid?", Format.MAX_ENTITYID_ARRAY_LEN));
+
+      var result = new EntityId?[len];
+
+      for (int i = 0; i < len; i++)
+        result[i] = ReadNullableEntityId();
+
+      return result;
+    }
+    #endregion
+
     #region JSON (object)
     public IJsonDataObject ReadJson()
     {
       var json = ReadString();
       if (json.IsNullOrWhiteSpace()) return null;
-      return JsonReader.DeserializeDataObject(json, true);
+      return JsonReader.DeserializeDataObject(json, JsonReadingOptions.Default);
     }
     #endregion
 

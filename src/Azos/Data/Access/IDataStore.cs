@@ -7,6 +7,7 @@
 using System;
 
 using Azos.Apps;
+using Azos.Collections;
 using Azos.Conf;
 using Azos.Instrumentation;
 
@@ -15,7 +16,7 @@ namespace Azos.Data.Access
   /// <summary>
   /// Represents a store that can save and retrieve data
   /// </summary>
-  public interface IDataStore : IApplicationComponent
+  public interface IDataStore : IApplicationComponent, INamed
   {
     /// <summary>
     /// Returns the name of the underlying store technology, example: "ORACLE", "MongoDB" etc.
@@ -27,6 +28,12 @@ namespace Azos.Data.Access
     /// Tests connectivity/operation and throws an exception if connection could not be established
     /// </summary>
     void TestConnection();
+
+    /// <summary>
+    /// Provides default timeout imposed on execution of commands/calls. Expressed in milliseconds.
+    /// A value less or equal to zero indicates no timeout
+    /// </summary>
+    int DefaultTimeoutMs { get; }
   }
 
 
@@ -39,5 +46,11 @@ namespace Azos.Data.Access
     /// Defines log level for data stores
     /// </summary>
     StoreLogLevel DataLogLevel { get; set; }
+
+    /// <summary>
+    /// Provides default timeout imposed on execution of commands/calls. Expressed in milliseconds.
+    /// A value less or equal to zero indicates no timeout
+    /// </summary>
+    new int DefaultTimeoutMs { get; set; }
   }
 }

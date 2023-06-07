@@ -121,17 +121,31 @@ namespace Azos.Wave
   [Serializable]
   public class FilterPipelineException : WaveException
   {
-    public const string FILTER_TYPE_FLD_NAME = "FPE-FT";
-    public const string FILTER_NAME_FLD_NAME = "FPE-FN";
+    public const string FILTER_TYPE_FLD_NAME  = "FPE-FT";
+    public const string FILTER_NAME_FLD_NAME  = "FPE-FN";
     public const string FILTER_ORDER_FLD_NAME = "FPE-FO";
+    public const string FILTER_PATH_FLD_NAME  =  "FPE-FP";
     public const string HANDLER_TYPE_FLD_NAME = "FPE-HT";
     public const string HANDLER_NAME_FLD_NAME = "FPE-HN";
 
-    public FilterPipelineException(WorkFilter filter, Exception inner) : base(inner.Message, inner)
+    public FilterPipelineException(WorkFilter filter, WorkFilter.CallChain chain, Exception inner) : base(inner.Message, inner)
     {
       FilterType = filter.GetType();
       FilterName = filter.Name;
       FilterOrder = filter.Order;
+
+      //#783 20230218 DKh ---------------------
+      var path = new StringBuilder(">", 128);
+      for(var i=0; i <= chain.CurrentIndex; i++)
+      {
+        path.Append('>');
+        path.Append(chain.Filters[i].Name);
+      }
+
+      FilterPath = path.ToString();
+      //---------------------------------------
+
+
       if (filter.Handler != null)
       {
         HandlerType = filter.Handler.GetType();
@@ -144,36 +158,17 @@ namespace Azos.Wave
       FilterType = (Type)info.GetValue(FILTER_TYPE_FLD_NAME, typeof(Type));
       FilterName = info.GetString(FILTER_NAME_FLD_NAME);
       FilterOrder = info.GetInt32(FILTER_ORDER_FLD_NAME);
+      FilterPath  = info.GetString(FILTER_PATH_FLD_NAME);
       HandlerType = (Type)info.GetValue(HANDLER_TYPE_FLD_NAME, typeof(Type));
       HandlerName = info.GetString(HANDLER_NAME_FLD_NAME);
     }
 
-    public readonly Type FilterType;
+    public readonly Type   FilterType;
     public readonly string FilterName;
-    public readonly int FilterOrder;
-    public readonly Type HandlerType;
+    public readonly int    FilterOrder;
+    public readonly string FilterPath;//#783
+    public readonly Type   HandlerType;
     public readonly string HandlerName;
-
-    /// <summary>
-    /// Returns a mnemonic filter sequence where the root exception originated from
-    /// </summary>
-    public string FilterPath
-    {
-      get
-      {
-         var result = new StringBuilder(":>", 128);
-
-         Exception error = this;
-         while(error is FilterPipelineException fpe)
-         {
-            result.Append(fpe.FilterName);
-            result.Append(">");
-            error = error.InnerException;
-         }
-
-         return result.ToString();
-      }
-    }
 
     /// <summary>
     /// Returns unwound root exception - unwrapping it from FilterPipelineException
@@ -194,7 +189,7 @@ namespace Azos.Wave
       get
       {
         var cause = RootException;
-        return FilterPath + " " +(cause != null ? cause.ToMessageWithType() : SysConsts.NULL_STRING);
+        return FilterPath + ">  " +(cause != null ? cause.ToMessageWithType() : SysConsts.NULL_STRING);
       }
     }
 
@@ -205,140 +200,13 @@ namespace Azos.Wave
       info.AddValue(FILTER_TYPE_FLD_NAME, FilterType);
       info.AddValue(FILTER_NAME_FLD_NAME, FilterName);
       info.AddValue(FILTER_ORDER_FLD_NAME, FilterOrder);
+      info.AddValue(FILTER_PATH_FLD_NAME,  FilterPath);
       info.AddValue(HANDLER_TYPE_FLD_NAME, HandlerType);
       info.AddValue(HANDLER_NAME_FLD_NAME, HandlerName);
       base.GetObjectData(info, context);
     }
   }
 
-  /// <summary>
-  /// Thrown to indicate various Http status conditions
-  /// </summary>
-  [Serializable]
-  public class HTTPStatusException : WaveException, IHttpStatusProvider, IExternalStatusProvider
-  {
-    public const string STATUS_CODE_FLD_NAME = "HTTPSE-SC";
-    public const string STATUS_DESCRIPTION_FLD_NAME = "HTTPSE-SD";
-
-    public static HTTPStatusException BadRequest_400(string descr = null)
-    {
-      var d = WebConsts.STATUS_400_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_400, d);
-    }
-
-    public static HTTPStatusException Unauthorized_401(string descr = null)
-    {
-      var d = WebConsts.STATUS_401_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_401, d);
-    }
-
-    public static HTTPStatusException Forbidden_403(string descr = null)
-    {
-      var d = WebConsts.STATUS_403_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_403, d);
-    }
-
-    public static HTTPStatusException NotFound_404(string descr = null)
-    {
-      var d = WebConsts.STATUS_404_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_404, d);
-    }
-
-    public static HTTPStatusException MethodNotAllowed_405(string descr = null)
-    {
-      var d = WebConsts.STATUS_405_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_405, d);
-    }
-
-    public static HTTPStatusException NotAcceptable_406(string descr = null)
-    {
-      var d = WebConsts.STATUS_406_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_406, d);
-    }
-
-    public static HTTPStatusException TooManyRequests_429(string descr = null)
-    {
-      var d = WebConsts.STATUS_429_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_429, d);
-    }
-
-    public static HTTPStatusException InternalError_500(string descr = null)
-    {
-      var d = WebConsts.STATUS_500_DESCRIPTION;
-      if (descr.IsNotNullOrWhiteSpace()) d += (": "+descr);
-
-      return new HTTPStatusException(WebConsts.STATUS_500, d);
-    }
-
-    public HTTPStatusException(int statusCode, string statusDescription) : base("{0} - {1}".Args(statusCode, statusDescription))
-    {
-      StatusCode = statusCode;
-      StatusDescription = statusDescription;
-    }
-
-    public HTTPStatusException(int statusCode, string statusDescription, string message) : base("{0} - {1} : {2}".Args(statusCode, statusDescription, message))
-    {
-      StatusCode = statusCode;
-      StatusDescription = statusDescription;
-    }
-
-    public HTTPStatusException(int statusCode, string statusDescription, string message, Exception inner) : base("{0} - {1} : {2}".Args(statusCode, statusDescription, message), inner)
-    {
-      StatusCode = statusCode;
-      StatusDescription = statusDescription;
-    }
-
-    protected HTTPStatusException(SerializationInfo info, StreamingContext context) : base(info, context)
-    {
-      StatusCode = info.GetInt32(STATUS_CODE_FLD_NAME);
-      StatusDescription = info.GetString(STATUS_DESCRIPTION_FLD_NAME);
-    }
-
-    /// <summary>
-    /// Http status code
-    /// </summary>
-    public readonly int StatusCode;
-
-    /// <summary>
-    /// Http status description
-    /// </summary>
-    public readonly string StatusDescription;
-
-    int IHttpStatusProvider.HttpStatusCode => StatusCode;
-    string IHttpStatusProvider.HttpStatusDescription => StatusDescription;
-
-    public override void GetObjectData(SerializationInfo info, StreamingContext context)
-    {
-      if (info == null)
-        throw new AzosException(StringConsts.ARGUMENT_ERROR + GetType().Name + ".GetObjectData(info=null)");
-      info.AddValue(STATUS_CODE_FLD_NAME, StatusCode);
-      info.AddValue(STATUS_DESCRIPTION_FLD_NAME, StatusDescription);
-      base.GetObjectData(info, context);
-    }
-
-    public virtual JsonDataMap ProvideExternalStatus(bool includeDump)
-    {
-      var result = this.DefaultBuildErrorStatusProviderMap(includeDump, "wave.mvc");
-      result[CoreConsts.EXT_STATUS_KEY_HTTP_CODE] = StatusCode;
-      result[CoreConsts.EXT_STATUS_KEY_HTTP_DESCRIPTION] = StatusDescription;
-
-      return result;
-    }
-  }
 
   /// <summary>
   /// Provides various extension methods

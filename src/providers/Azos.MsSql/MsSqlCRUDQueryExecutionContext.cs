@@ -5,14 +5,14 @@
 </FILE_LICENSE>*/
 
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace Azos.Data.Access.MsSql
 {
     /// <summary>
     /// Provides query execution environment in Oracle context
     /// </summary>
-    public struct MsSqlCRUDQueryExecutionContext : ICRUDQueryExecutionContext
+    public struct MsSqlCRUDQueryExecutionContext : ICrudQueryExecutionContext
     {
        public readonly MsSqlDataStoreBase  DataStore;
        public readonly SqlConnection  Connection;

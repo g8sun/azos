@@ -597,6 +597,24 @@ namespace Azos.IO
     }
 
 
+    public override void Write(DateTimeOffset value)
+    {
+      Write(value.DateTime);
+      Write(value.Offset);
+    }
+
+    public override void Write(DateTimeOffset? value)
+    {
+      if (value.HasValue)
+      {
+        Write(true);
+        Write(value.Value);
+        return;
+      }
+      Write(false);
+    }
+
+
     public override void Write(TimeSpan value)
     {
       this.Write(value.Ticks);
@@ -636,6 +654,23 @@ namespace Azos.IO
     }
 
     public override void Write(Data.GDID? value)
+    {
+      if (value.HasValue)
+      {
+        this.Write(true);
+        Write(value.Value);
+        return;
+      }
+      this.Write(false);
+    }
+
+    public override void Write(Data.RGDID value)
+    {
+      this.Write(value.Route);
+      this.Write(value.Gdid);
+    }
+
+    public override void Write(Data.RGDID? value)
     {
       if (value.HasValue)
       {

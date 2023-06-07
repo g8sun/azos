@@ -466,6 +466,20 @@ namespace Azos.Conf
     }
 
     /// <inheritdoc/>
+    public RGDID ValueAsRGDID(RGDID dflt, bool verbatim = false)
+    {
+      var val = verbatim ? VerbatimValue : Value;
+      return val.AsRGDID(dflt);
+    }
+
+    /// <inheritdoc/>
+    public RGDID? ValueAsNullableRGDID(RGDID? dflt = null, bool verbatim = false)
+    {
+      var val = verbatim ? VerbatimValue : Value;
+      return val.AsNullableRGDID(dflt);
+    }
+
+    /// <inheritdoc/>
     public DateTime ValueAsDateTime(DateTime dflt, bool verbatim = false)
     {
       var val = verbatim ? VerbatimValue : Value;
@@ -1113,7 +1127,7 @@ namespace Azos.Conf
     }
 
     /// <summary>
-    /// Resets modification of this an all child nodes
+    /// Resets modification of this and all child nodes
     /// </summary>
     public override void ResetModified()
     {
@@ -1142,13 +1156,13 @@ namespace Azos.Conf
     ///  section[attr=value] for access using value of sections named `attr`
     ///
     /// Multiple paths may be coalesced  using '|' or ';', having each segment optionally start with either:
-    ///  '&' - require node verbatim value (such as variable reference) to be non null/empty
+    ///  '&amp;' - require node verbatim value (such as variable reference) to be non null/empty
     ///  '#' - require node evaluated value (such as eventually pointed-to value) to be non null/empty
-    /// Example:  &/$atr1|&/$atr2    #/$atr1|#/$atr2
+    /// Example:  &amp;/$atr1|&amp;/$atr2    #/$atr1|#/$atr2
     /// </param>
     /// <example>
     ///     Navigate("/vars/[3]"); Navigate("/tables/table[resident]"); Navigate("/vars/var1/$[2]");  Navigate("/tables/table[name=patient]");
-    ///     Navigate("&$atr1; &$atr2"); Navigate("#$atr1; #$atr2");
+    ///     Navigate("&amp;$atr1; &amp;$atr2"); Navigate("#$atr1; #$atr2");
     /// </example>
     /// <remarks>
     ///   /table[patient]    -   get first section named "table" with value "patient"
@@ -1267,7 +1281,7 @@ namespace Azos.Conf
     ///  with input as path string. "~" is used to qualify environment vars that get resolved through Configuration.EnvironmentVarResolver
     ///  Example: `....add key="Schema.$(/A/B/C/$attr)" value="$(@~HOME)bin\Transforms\"...`
     /// </summary>
-    public string EvaluateValueVariables(string value)
+    public string EvaluateValueVariables(string value, bool recurse = true)
     {
       if (value == null) return null;
 
@@ -1294,15 +1308,17 @@ namespace Azos.Conf
 
         const int MAX_ITERATIONS = 1_000;
         var iteration = 0;
-        while (true)
+        var idxsLatch = 0;
+        while(true)
         {
           if (iteration++ > MAX_ITERATIONS)
             throw new ConfigException(StringConsts.CONFIG_INFINITE_VARS_ERROR.Args(value.TakeFirstChars(32, "..."), MAX_ITERATIONS));
 
-          var idxs = value.IndexOf(VAR_START);
+          var idxs = recurse ? value.IndexOf(VAR_START) : value.IndexOf(VAR_START, idxsLatch);
           if (idxs < 0) break;
           var idxe = value.IndexOf(VAR_END, idxs);
           if (idxe <= idxs) break;
+
 
           var originalDecl = value.Substring(idxs, idxe - idxs + VAR_END.Length);
           var vname = value.Substring(idxs + VAR_START.Length, 1 + idxe - idxs - VAR_START.Length - VAR_END.Length).Trim();
@@ -1313,14 +1329,20 @@ namespace Azos.Conf
           vlist.Add(vname);
           try
           {
+            string replacement;
             if (vname.StartsWith(VAR_PATH_MOD))
             {
-              value = replacePaths(value, originalDecl, getValueFromMacroOrEnvVarOrNavigationWithCheck(vname.Replace(VAR_PATH_MOD, string.Empty)));
+              replacement = getValueFromMacroOrEnvVarOrNavigationWithCheck(vname.Replace(VAR_PATH_MOD, string.Empty));
+              value = replacePaths(recurse, value, originalDecl, replacement, recurse ? 0 : idxsLatch);
             }
             else
             {
-              value = value.Replace(originalDecl, getValueFromMacroOrEnvVarOrNavigationWithCheck(vname));
+              replacement = getValueFromMacroOrEnvVarOrNavigationWithCheck(vname);
+              value = replace(recurse, value, originalDecl, replacement, idxsLatch);
             }
+
+            idxsLatch = idxs + replacement.Length;
+            if (!recurse && idxsLatch >= value.Length) break;
           }
           finally
           {
@@ -1387,26 +1409,38 @@ namespace Azos.Conf
       }
     }
 
+    [ThreadStatic] private static int ts_Depth_ProcessAllExistingIncludes;
+
+
     /// <summary>
     /// Calls ProcessIncludePragmas(recurse: true)in a loop until all includes are processed or max nesting depth is exceeded.
-    /// For all practical reasons the nesting level should not exceed 7 levels.
+    /// For all practical reasons the nesting level should not exceed 16 levels.
+    /// This call is not logically thread-safe, it must be called from the main thread in the app
     /// </summary>
     /// <param name="configLevelName">Optional logic name of config level which gets included in exception text in case of error</param>
     /// <param name="includePragma">Optional include pragma section name. If null, the default is used</param>
-    public void ProcessAllExistingIncludes(string configLevelName = null, string includePragma = null)
+    /// <param name="overrideRules">Used when includes are override=true</param>
+    public void ProcessAllExistingIncludes(string configLevelName = null, string includePragma = null, NodeOverrideRules overrideRules = null)
     {
-      const int MAX_INCLUDE_DEPTH = 7;
+      const int MAX_INCLUDE_DEPTH = 16;
 
       if (configLevelName.IsNullOrWhiteSpace()) configLevelName = StringConsts.UNKNOWN_STRING;
       try
       {
-        for (int count = 0; ProcessIncludePragmas(true, includePragma); count++)
-          if (count >= MAX_INCLUDE_DEPTH)
+        ts_Depth_ProcessAllExistingIncludes++;
+        if (ts_Depth_ProcessAllExistingIncludes > MAX_INCLUDE_DEPTH)
             throw new ConfigException(StringConsts.CONFIG_INCLUDE_PRAGMA_DEPTH_ERROR.Args(MAX_INCLUDE_DEPTH));
+
+        var found = ProcessIncludePragmas(true, includePragma, overrideRules);
+        if (found) ProcessAllExistingIncludes(configLevelName, includePragma, overrideRules);
       }
       catch (Exception error)
       {
         throw new ConfigException(StringConsts.CONFIGURATION_INCLUDE_PRAGMA_ERROR.Args(configLevelName, error.ToMessageWithType()), error);
+      }
+      finally
+      {
+        ts_Depth_ProcessAllExistingIncludes--;
       }
     }
 
@@ -1423,6 +1457,7 @@ namespace Azos.Conf
     /// </summary>
     /// <param name="recurse">True to process inner nodes</param>
     /// <param name="includePragma">Pragma section name, '_include' by default</param>
+    /// <param name="overrideRules">Used if include is override=true</param>
     /// <returns>True if pragmas were found</returns>
     /// <example>
     ///  azos
@@ -1442,7 +1477,7 @@ namespace Azos.Conf
     ///    }
     ///  }
     /// </example>
-    public bool ProcessIncludePragmas(bool recurse, string includePragma = null)
+    public bool ProcessIncludePragmas(bool recurse, string includePragma = null, NodeOverrideRules overrideRules = null)
     {
       if (includePragma.IsNullOrWhiteSpace())
         includePragma = Configuration.DEFAULT_CONFIG_INCLUDE_PRAGMA;
@@ -1454,20 +1489,22 @@ namespace Azos.Conf
       {
         if (child.IsSameName(includePragma))
         {
-          var included = getIncludedNode(child);
+          var (included, isOverride) = getIncludedNode(child, overrideRules);
           if (included != null)
           {
-            child.include(included);
+            child.include(included, isOverride, overrideRules);
             result = true;
           }
           else
+          {
             child.Delete();
+          }
 
           continue;
         }
 
         if (recurse)
-          result |= child.ProcessIncludePragmas(recurse, includePragma);
+          result |= child.ProcessIncludePragmas(recurse, includePragma, overrideRules);
       }
 
       return result;
@@ -1589,14 +1626,37 @@ namespace Azos.Conf
 
     #region .pvt .impl
 
-    private ConfigSectionNode getIncludedNode(ConfigSectionNode pragma)
+    private (ConfigSectionNode node, bool isOverride) getIncludedNode(ConfigSectionNode pragma, NodeOverrideRules overrideRules)
     {
       try
       {
-        var root = getIncludedNodeRoot(pragma);
+        var (root, isOverride) = getIncludedNodeRoot(pragma);
 
         if (root == null)
-          return null;
+          return (null, isOverride);
+
+        //#814 with
+        var with = pragma[Configuration.CONFIG_INCLUDE_PRAGMA_WITH_SECTION];
+        if (with.Exists)
+        {
+          foreach(var anode in with.Attributes)
+          {
+            var existing = root.AttrByName(anode.Name);
+            if (existing.Exists)
+              existing.Value = anode.EvaluatedValue;
+            else
+              root.AddAttributeNode(anode.Name, anode.Value);//<==== EVALUATE value right now!!!
+          }
+        }
+        //#814 -------------------
+
+        //#767 20220908 Dkh+Jpk ProcessIncludes immediate expansion
+        if (pragma.Of(Configuration.CONFIG_INCLUDE_PRAGMA_PREPROCESS_ALL_INCLUDES_ATTR).ValueAsBool(false))
+        {
+          root.ProcessAllExistingIncludes(pragma.RootPath, pragma.Name, overrideRules);
+        }
+        //-------------
+
 
         //name section wrap
         var asname = pragma.AttrByName(Configuration.CONFIG_NAME_ATTR).ValueAsString();
@@ -1608,7 +1668,7 @@ namespace Azos.Conf
           root = wrap.Root;
         }
 
-        return root;
+        return (root, isOverride);
       }
       catch (Exception inner)
       {
@@ -1616,8 +1676,9 @@ namespace Azos.Conf
       }
     }
 
-    private ConfigSectionNode getIncludedNodeRoot(ConfigSectionNode pragma)
+    private (ConfigSectionNode node, bool isOverride) getIncludedNodeRoot(ConfigSectionNode pragma)
     {
+      var isOverride = pragma.AttrByName(Configuration.CONFIG_INCLUDE_PRAGMA_OVERRIDE_ATTR).ValueAsBool(false);
       var copyPath = pragma.AttrByName(Configuration.CONFIG_INCLUDE_PRAGMA_COPY_ATTR).Value;
 
       var ndProvider = pragma[Configuration.CONFIG_INCLUDE_PRAGMA_PROVIDER_SECTION];
@@ -1632,7 +1693,7 @@ namespace Azos.Conf
                                           Configuration.CONFIG_INCLUDE_PRAGMA_COPY_ATTR));
 
         var root = pragma.NavigateSection(copyPath);
-        return root.Exists ? root : null;
+        return (root.Exists ? root : null, isOverride);
       }
 
       if (fileName.IsNullOrWhiteSpace() && !ndProvider.Exists)
@@ -1653,7 +1714,7 @@ namespace Azos.Conf
 
           if (required && root == null) throw new ConfigException("'{0}'.ProvideConfigNode() returned null".Args(provider.GetType().FullName));
 
-          return root;
+          return (root, isOverride);
         }
         finally
         {
@@ -1664,6 +1725,20 @@ namespace Azos.Conf
 
       //2 Try to get content form the file system
       var ndFs = pragma[Configuration.CONFIG_INCLUDE_PRAGMA_FS_SECTION];
+
+      //20220927 DKh #779
+      if (!ndFs.Exists) //load from local file if "fs" section is not declared
+      {
+        if (!File.Exists(fileName))
+        {
+          if (required) throw new ConfigException("Referenced local file '{0}' does not exist".Args(fileName));
+          return (null, isOverride);
+        }
+
+        var root = Configuration.ProviderLoadFromFile(fileName).Root;
+        return (root, isOverride);
+      }
+
       //todo: Future, pool file system instances, do not allocate FS on every get, maybe create a module for FS?
       using (var fs = FactoryUtils.MakeAndConfigureComponent<IFileSystemImplementation>(Configuration.Application,
                                                                                        ndFs,
@@ -1686,7 +1761,7 @@ namespace Azos.Conf
           if (file == null)
           {
             if (required) throw new ConfigException("Referenced file '{0}' does not exist".Args(fileName));
-            return null;
+            return (null, isOverride);
           }
 
           source = file.ReadAllText();
@@ -1697,15 +1772,23 @@ namespace Azos.Conf
 
           var root = Configuration.ProviderLoadFromString(source, fmt, Configuration.CONFIG_LACONIC_FORMAT).Root;
 
-          return root;
+          return (root, isOverride);
         }
       }
     }
 
-    internal void include(ConfigSectionNode other)
+    internal void include(ConfigSectionNode other, bool isOverride, NodeOverrideRules overrideRules)
     {
+      //#767 20220907 DKh+Jpk merging config files with overrides needed for testing
+      if (isOverride)
+      {
+        this.Delete();
+        other.Name = Parent.Name;
+        Parent.OverrideBy(other, overrideRules);
+        return;
+      }
+      //---------------
       checkCanModify();
-
       var oattrs = other.Attributes;
       var ochildren = other.Children;
 
@@ -1905,10 +1988,31 @@ namespace Azos.Conf
 
       var ENV_MOD = m_Configuration.Variable_ENV_MOD;
 
-      if (name.StartsWith(ENV_MOD))
+      if (name.StartsWith(ENV_MOD))//ENV VARIABLE    $(~!SKY_HOME)
       {
+        var original = name;
         name = name.Replace(ENV_MOD, string.Empty);
-        return m_Configuration.ResolveEnvironmentVar(name) ?? string.Empty;
+
+        var isreq = false;
+        if (name.StartsWith("!"))
+        {
+          isreq = true;
+          name = name.Length > 1 ? name.Substring(1) : string.Empty;
+        }
+
+        var result = string.Empty;
+
+        if (name.IsNotNullOrWhiteSpace())
+        {
+          result = m_Configuration.ResolveEnvironmentVar(name) ?? string.Empty;
+        }
+
+        if (isreq && result.IsNullOrWhiteSpace())
+        {
+          throw new ConfigException(StringConsts.CONFIGURATION_ENV_VAR_REQUIRED_ERROR.Args(original));
+        }
+
+        return result;
       }
       else
         return Navigate(name).Value ?? string.Empty;
@@ -1929,9 +2033,20 @@ namespace Azos.Conf
       return m_Configuration.RunMacro(this, value, macro.Name, config.Root);
     }
 
-    private string replacePaths(string line, string oldValue, string newValue)
+
+    private string replace(bool all, string line, string oldValue, string newValue, int idxStart)
     {
-      var start = 0;
+       if (all) return line.Replace(oldValue, newValue);
+       //replace first
+       var i = line.IndexOf(oldValue, idxStart);
+       if (i<0) return line;
+
+       return line.Substring(0, i) + newValue + line.Substring(i + oldValue.Length);
+    }
+
+    private string replacePaths(bool all, string line, string oldValue, string newValue, int idxStart)
+    {
+      var start = idxStart;
       while (true)
       {
         var idx = line.IndexOf(oldValue, start);
@@ -1941,6 +2056,7 @@ namespace Azos.Conf
         path = addPath(path, line.Substring(idx + oldValue.Length));
 
         line = path;
+        if (!all) break;
       }
 
       return line;

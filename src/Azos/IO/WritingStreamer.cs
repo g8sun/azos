@@ -94,6 +94,9 @@ namespace Azos.IO
     public abstract void Write(DateTime value);
     public abstract void Write(DateTime? value);
 
+    public abstract void Write(DateTimeOffset value);
+    public abstract void Write(DateTimeOffset? value);
+
     public abstract void Write(TimeSpan value);
     public abstract void Write(TimeSpan? value);
 
@@ -102,6 +105,9 @@ namespace Azos.IO
 
     public abstract void Write(Data.GDID value);
     public abstract void Write(Data.GDID? value);
+
+    public abstract void Write(Data.RGDID value);
+    public abstract void Write(Data.RGDID? value);
 
     public abstract void Write(Glue.Protocol.TypeSpec spec);
     public abstract void Write(Glue.Protocol.MethodSpec spec);

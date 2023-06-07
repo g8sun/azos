@@ -19,9 +19,12 @@ namespace Azos
     public const string FLOW_NO_REF_CYCLES_VIOLATION_ERROR = "State machine '{0}' caused violation of NoRefCycles constraint. Most likely the object graph has cycles which are either not supported or the operation body failed to check for presence of the reference in the set";
 
     public const string APP_SET_MEMORY_MODEL_ERROR =
-      "The App.SetMemoryModel() method must be called at process entry point before the app container allocation";
+      "The Ambient.SetMemoryModel() method must be called at process entry point before the app container allocation";
 
-        public const string OBJECT_DISPOSED_ERROR =
+    public const string APP_SET_PROCESS_NAME_ERROR =
+      "The Ambient.SetProcessName() method must be called at process entry point before the app container allocation";
+
+    public const string OBJECT_DISPOSED_ERROR =
             "Object '{0}' instance was already disposed";
 
         public const string OBJECT_WAS_NOT_DETERMINISTICALLY_DISPOSED_ERROR =
@@ -143,6 +146,8 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
         public const string CONFIGURATION_ATTRIBUTE_MEMBER_READONLY_ERROR = "Instance of '{0}' could not be configured using ConfigAttribute because its member '{1}' is readonly ";
 
         public const string CONFIGURATION_NAVIGATION_REQUIRED_ERROR = "Bad navigation: path '{0}' requires node but did not land at an existing node";
+
+        public const string CONFIGURATION_ENV_VAR_REQUIRED_ERROR = "Variable ref '{0}' requires value but returned nothing";
 
         public const string CONFIGURATION_PATH_SEGMENT_NOT_SECTION_ERROR = "Bad navigation: path segment '{0}' in path '{1}' can not be navigated to because its parent is not a section node ";
 
@@ -284,6 +289,10 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string EXPRESSION_SCOPE_COMPILE_ERROR =
         "Expression scope compilation error: ";
 
+
+    public const string CONFIG_FOREST_MAX_SEGMENT_COUNT_ERROR = "Maximum allowed forest path segment count of {0} is exceeded";
+    public const string CONFIG_FOREST_MAX_SEGMENT_LEN_ERROR = "Maximum allowed path segment length of {0} chars is exceeded";
+    public const string CONFIG_FOREST_PATH_ESCAPE_ERROR = "Invalid escape sequence in forest path: `{0}`";
 
 
     public const string MODEL_METHOD_NOT_FOUND_ERROR =
@@ -447,6 +456,12 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string GUARDED_CLAUSE_MAY_NOT_BE_NULL_ERROR =
         "Guarded method '{0}' clause '{1}' may not be null";
 
+    public const string GUARDED_CLAUSE_NO_REQUIRED_VALUE_ERROR =
+        "Guarded method '{0}' clause '{1}' is missing required value";
+
+    public const string GUARDED_CLAUSE_ATOM_VALUE_ZERO_INVALID_ERROR =
+        "Guarded method '{0}' clause '{1}' atom value is zero or invalid";
+
     public const string GUARDED_CLAUSE_MAY_NOT_BE_DISPOSED_ERROR =
         "Guarded method '{0}' clause '{1}' is already disposed";
 
@@ -460,7 +475,7 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
         "Guarded method '{0}' clause '{1}' may not be type cast to '{2}'";
 
     public const string GUARDED_CONFIG_NODE_CLAUSE_MAY_NOT_BE_EMPTY_ERROR =
-        "Guarded method '{0}' config node clause '{1}' may not be null or empty";
+        "Guarded method '{0}' config node clause '{1}' may not be null or empty but it is not defined in the supplied config context";
 
     public const string GUARDED_STRING_CLAUSE_MAY_NOT_BE_BLANK_ERROR =
         "Guarded method '{0}' string clause '{1}' may not be null or blank/whitespace";
@@ -476,6 +491,9 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
 
     public const string GUARDED_CLAUSE_CONDITION_ERROR =
         "Guarded method '{0}' clause '{1}' failed condition check";
+
+    public const string GUARDED_CLAUSE_VALIDATION_ERROR =
+        "Guarded method '{0}' clause '{1}' failed validation check: {2}";
 
     public const string STREAM_READ_EOF_ERROR =
         "Stream EOF before operation could complete: ";
@@ -762,6 +780,9 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string CRUD_FIELDDEF_TARGET_DERIVATION_ERROR =
       "Fieldset `{0}` contains bad `deriveFromTargetName` references to targets that are either not found in any [Field] attribute instance on that field, contain reference cycles, or missing the [Field] declarations without derivation dependencies. The field dependency graph could not be resolved";
 
+
+    public const string CRUD_FIELDDEF_SET_GETONLY_ERROR = "Can not set get-only field `{0}`";
+
     public const string CRUD_FIELDDEF_ATTR_MISSING_ERROR = "CRUD FieldDef must be constructed using at least one [Field] attribute. Name: '{0}'";
 
     public const string CRUD_FIELD_VALUE_REQUIRED_ERROR = "Field value is required";
@@ -816,7 +837,7 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
 
     public const string CRUD_ROW_UPGRADE_KEY_MUTATION_ERROR = "Upgraded row key has changed";
 
-    public const string CRUD_ROWSET_OPERATION_ROW_IS_NULL_OR_SCHEMA_MISMATCH_ERROR = "CRUD rowset was supplied either a null row or a row with a different schema";
+    public const string CRUD_ROWSET_OPERATION_ROW_IS_NULL_OR_SCHEMA_MISMATCH_ERROR = "CRUD rowset was supplied either a null row or a row with a different/incompatible schema";
 
     public const string CRUD_TRANSACTION_IS_NOT_OPEN_ERROR = "CRUD transaction is not open for requested operation '{0}'. Current transaction status: '{0}'";
 
@@ -837,18 +858,7 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string DISTRIBUTED_DATA_GDID_CTOR_ERROR = "GDID can not be created from the supplied: 'authority={0}>{1},counter={2}>{3}'";
 
     public const string DISTRIBUTED_DATA_GDID_PARSE_ERROR = "String value '{0}' can not be parsed as GDID";
-
-    public const string DISTRIBUTED_DATA_PARCEL_INVALID_OPERATION_ERROR = "Error performing '{0}' operation on parcel '{1}' because parcel is in '{2}' state";
-
-    public const string DISTRIBUTED_DATA_PARCEL_MERGE_NOT_IMPLEMENTED_ERROR = "Error performing Merge() operation on parcel '{0}' because DoMerge() is not implemented. Either 'parcel.MetadataAttribute.SupportsMerge' was not checked before making this call, or forgot to implement DoMerge()";
-
-    public const string DISTRIBUTED_DATA_PARCEL_SEAL_VALIDATION_ERROR = "Error sealing parcel '{0}' due to validation errors: ";
-
-    public const string DISTRIBUTED_DATA_PARCEL_UNWRAP_FORMAT_ERROR = "Parcel '{0}' can not unwrap the payload as its format '{1}' is not handled";
-    public const string DISTRIBUTED_DATA_PARCEL_UNWRAP_DESER_ERROR = "Parcel '{0}' could not unwrap the payload due to deserialization exception: {1}";
-
-
-    public const string DISTRIBUTED_DATA_PARCEL_MISSING_ATTRIBUTE_ERROR = "Parcel '{0}' does not specify the required [DataParcel(...)] attribute in its declaration";
+    public const string DISTRIBUTED_DATA_RGDID_PARSE_ERROR = "String value '{0}' can not be parsed as RGDID";
 
     public const string ELINK_CHAR_COMBINATION_ERROR = "ELink '{0}' could not be read as it contains an invalid combination '{1}'";
     public const string ELINK_CHAR_LENGTH_LIMIT_ERROR = "ELink '{0}...' could not be encoded/decoded as it exceeds maximum permissible length";
@@ -856,12 +866,24 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string ELINK_CHAR_LENGTH_ERROR = "ELink '{0}' could not be read as it contains an invalid character data length";
     public const string ELINK_CSUM_MISMATCH_ERROR = "ELink '{0}' could not be read as its checksum does not match";
 
+    public const string DATA_SHARDING_AT_LEAST_ONE_CLAUSE = "At least one shard configured";
+
+    public const string DATA_SHARDING_DUPLICATE_SECTION_CONFIG_ERROR =
+      "Data store configuration contains duplicate named section: ./{0}[name='{1}']." +
+      "Warning: setting wrong shard set ordering would lead to data " +
+      "loss as the system will not be able to properly route request to destination shards";
+
+    public const string DATA_SHARDING_DUPLICATE_SHARDSET_ORDER_CONFIG_ERROR =
+      "Data store configuration declares shard sets of duplicate order. Each shard set must have a unique order in the setup. " +
+      "The shard set with the lowest order is the current. Warning: setting wrong shard set ordering would lead to data " +
+      "loss as the system will not be able to properly route request to destination shards";
+
+
     public const string CACHE_VALUE_FACTORY_ERROR = "Cache value factory func threw error from {0}. Exception: {1}";
     public const string CACHE_RECORD_ITEM_DISPOSE_ERROR = "Cache value threw error while trying to be disposed from {0}. Exception: {1}";
 
     public const string CACHE_TABLE_CTOR_SIZES_WARNING =
                       "Cache.Table.ctor(bucketCount==recPerPage), two parameters may not be equal because they will cause hash clustering. The 'recPerPage' has been increased by the system";
-
 
     public const string STANDARDS_DISTANCE_UNIT_TYPE_ERROR = "Unsupported distance unit type: {0}";
     public const string STANDARDS_WEIGHT_UNIT_TYPE_ERROR = "Unsupported weight unit type: {0}";
@@ -1037,6 +1059,9 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string BSON_GDID_BUFFER_ERROR =
         "Error converting GDID data buffer: {0}";
 
+    public const string BSON_RGDID_BUFFER_ERROR =
+        "Error converting RGDID data buffer: {0}";
+
     public const string BSON_GUID_BUFFER_ERROR =
         "Error converting GUID data buffer: {0}";
 
@@ -1065,8 +1090,13 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
 
     public const string HTTP_CLIENT_CALL_ASSIGMENT_ERROR = "HttpService .Call() can not be made due to invalid endpoint assignments: {0}";
 
+    public const string HTTP_CLIENT_DUPLICATE_ASPECT_CONFIG_ERROR = "Duplicate named aspect `{0}` on `{1}`";
+
     public const string WEB_CALL_RETURN_JSONMAP_ERROR = "The received content is not representable as JsonDataMap: '{0}..'";
+    public const string WEB_CALL_RETURN_UNSUPPORTED_CTP_ERROR = "The received content type is not supported: '{0}'";
     public const string WEB_CALL_UNSUCCESSFUL_ERROR = "Web call to `...{0}` was unsuccessful: HTTP {1} - {2}";
+
+    public const string WEB_CALL_UNSUCCESSFUL_RESPONSE_ERROR = "Web call to `...{0}` returned HTTP {1} - {2} but failed on reading the response: {3}";
 
 
     public const string AROW_SATELLITE_ASSEMBLY_NAME_ERROR = "Could not find serialization satellite for assembly `{0}` as the name pattern does not match. The source assembly file name must end with `*.dll` by convention";
@@ -1131,6 +1161,12 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string BIX_WRITE_X_COLLECTION_MAX_SIZE_ERROR = "Attempt to write a collection [{0}] of {1} is over the allowed limit of {2}";
     public const string BIX_READ_X_ARRAY_MAX_SIZE_ERROR = "Attempt to read an array [{0}] of {1} is over the allowed limit of {2}";
 
+    public const string BIX_BIXON_DATA_CIRCULAR_REFERENCE_ERROR = "Bixon serialization attempt of data with circular reference";
+    public const string BIX_BIXON_CORRUPT_HEADER_ERROR = "Bixon header is corrupted";
+    public const string BIX_BIXON_CORRUPT_STREAM_FLAG_ERROR = "Bixon stream is corrupted: unknown flag";
+    public const string BIX_BIXON_CORRUPT_STREAM_DOCMAP_ERROR = "Bixon stream is corrupted: not a doc map";
+    public const string BIX_BIXON_LIMIT_EXCEEDED_ERROR = "Bixon limit exceeded: ";
+    public const string BIX_BIXON_UNSUPPORTED_VERSION_ERROR = "Bixon stream requires version {0} however this runtime only supports reading up to version {1}";
 
     public const string METADATA_CTOR_CONTENT_ERROR = "Metadata specification error. `{0}`.ctor(`{1}` content is bad). Revise attribute declaration. Cause: {2}";
 

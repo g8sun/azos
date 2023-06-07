@@ -13,7 +13,7 @@ using Azos.Wave;
 using Azos.Wave.Mvc;
 
 using Azos.Apps.Terminal;
-using Azos.Sky.Security.Permissions.Admin;
+using Azos.Security.Admin;
 
 namespace Azos.Sky.WebManager.Controllers
 {
@@ -35,7 +35,7 @@ namespace Azos.Sky.WebManager.Controllers
          return new {Status = "Already connected", WhenConnected = terminal.WhenConnected};
 
 
-        if (who.IsNullOrWhiteSpace()) who = "{0}-{1}".Args(WorkContext.Request.UserHostAddress, WorkContext.Session.User);
+        if (who.IsNullOrWhiteSpace()) who = "{0}-{1}".Args(WorkContext.HttpContext.Connection.RemoteIpAddress, WorkContext.Session.User);
         terminal = AppRemoteTerminal.MakeNewTerminal(App);
         var info = terminal.Connect(who);
         WorkContext.Session[TERMINAL_SESSION_KEY] = terminal;

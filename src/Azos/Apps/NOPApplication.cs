@@ -113,6 +113,10 @@ namespace Azos.Apps
 
     public Atom AppId => Atom.ZERO;
 
+    public Atom CloudOrigin => Atom.ZERO;
+
+    public ushort NodeDiscriminator => 0;
+
     public Guid InstanceId => m_InstanceID;
 
     public bool AllowNesting => false;
@@ -207,6 +211,12 @@ namespace Azos.Apps
       => DefaultAppVarResolver.ResolveNamedVar(this, name, out value);
 
     public void SetConsolePort(IO.Console.IConsolePort port) { }
+
+    public bool WaitForStopOrShutdown(int waitIntervalMs)
+    {
+      if (waitIntervalMs > 0) System.Threading.Thread.Sleep(waitIntervalMs);
+      return false;
+    }
 
     #endregion
 

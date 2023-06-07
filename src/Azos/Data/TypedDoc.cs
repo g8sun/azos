@@ -35,7 +35,7 @@ namespace Azos.Data
     #region Properties
 
     /// <summary>
-    /// References a schema for a table that this row is a part of
+    /// References a schema of this data document
     /// </summary>
     public sealed override Schema Schema
     {
@@ -64,9 +64,7 @@ namespace Azos.Data
 
     public override void SetFieldValue(Schema.FieldDef fdef, object value)
     {
-      // var pinf = fdef.MemberInfo;
       value = ConvertFieldValueToDef(fdef, value);
-      // pinf.SetValue(this, value, null);
       fdef.SetPropertyValue(this, value);
     }
 
@@ -95,6 +93,11 @@ namespace Azos.Data
     public virtual bool AmorphousDataEnabled => true;
 
     /// <summary>
+    /// True if amorphous data is allocated (not null)
+    /// </summary>
+    public bool HasAmorphousData => m_AmorphousData != null;
+
+    /// <summary>
     /// Returns data that does not comply with known schema (dynamic data). The field names are NOT case-sensitive
     /// </summary>
     public IDictionary<string, object> AmorphousData
@@ -102,11 +105,16 @@ namespace Azos.Data
       get
       {
         if (m_AmorphousData == null)
+        {
           m_AmorphousData = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        }
 
         return m_AmorphousData;
       }
     }
+
+    /// <summary> Sets whole amorphous data object at once </summary>
+    public void SetAmorphousData(Dictionary<string, object> data) => m_AmorphousData = data;
 
     void IAmorphousData.BeforeSave(string targetName) => DoAmorphousDataBeforeSave(targetName);
     void IAmorphousData.AfterLoad(string targetName) => DoAmorphousDataAfterLoad(targetName);

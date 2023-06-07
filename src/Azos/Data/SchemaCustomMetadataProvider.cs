@@ -8,6 +8,7 @@ using System;
 using System.Reflection;
 
 using Azos.Conf;
+using Azos.Serialization.Bix;
 
 namespace Azos.Data
 {
@@ -48,6 +49,14 @@ namespace Azos.Data
           }
           catch { }
         }
+
+        #region Add Bix #568
+        var bix = schema.TypedDocType.GetCustomAttribute<BixAttribute>(false);
+        if (bix != null)
+        {
+          ndoc.AddAttributeNode("bix-id", bix.TypeGuid);
+        }
+        #endregion
       }
 
       foreach (var def in schema)
@@ -55,8 +64,8 @@ namespace Azos.Data
         var nfld = ndoc.AddChildNode("field");
         try
         {
-          var targetName = context.GetSchemaDataTargetName(schema, doc);
-          field(targetName, def, context, nfld, doc);
+          var targeted = context.GetSchemaDataTargetName(schema, doc);
+          field(targeted.name, targeted.useFieldNames, def, context, nfld, doc);
         }
         catch (Exception error)
         {
@@ -69,14 +78,17 @@ namespace Azos.Data
       return ndoc;
     }
 
-    private void field(string targetName, Schema.FieldDef def, IMetadataGenerator context, ConfigSectionNode data, TypedDoc doc)
+    private void field(string targetName, bool useTargetedFieldNames, Schema.FieldDef def, IMetadataGenerator context, ConfigSectionNode data, TypedDoc doc)
     {
-      var fname = def.GetBackendNameForTarget(targetName, out var fatr);
+      var backendName = def.GetBackendNameForTarget(targetName, out var fatr);
+
+      var fname = useTargetedFieldNames ? backendName : def.Name;
 
       if (fatr == null) return;
 
       if (context.DetailLevel > MetadataDetailLevel.Public)
       {
+        data.AddAttributeNode("backend-name", backendName);
         data.AddAttributeNode("prop-name", def.Name);
         data.AddAttributeNode("prop-type", def.Type.AssemblyQualifiedName);
         data.AddAttributeNode("non-ui", fatr.NonUI);
@@ -110,6 +122,7 @@ namespace Azos.Data
       data.AddAttributeNode("name", fname);
       data.AddAttributeNode("type", context.AddTypeToDescribe(def.Type));
       data.AddAttributeNode("order", def.Order);
+      data.AddAttributeNode("get-only", def.GetOnly);
 
       if (fatr.Description.IsNotNullOrWhiteSpace()) data.AddAttributeNode("description", fatr.Description);
       data.AddAttributeNode("key", fatr.Key);
@@ -117,7 +130,7 @@ namespace Azos.Data
       data.AddAttributeNode("kind", fatr.Kind);
 
       data.AddAttributeNode("required", fatr.Required);
-      data.AddAttributeNode("visible", fatr.Required);
+      data.AddAttributeNode("visible", fatr.Visible);//#790 jpk
       data.AddAttributeNode("case", fatr.CharCase);
       if (fatr.Default != null) data.AddAttributeNode("default", fatr.Default);
       if (fatr.DisplayFormat.IsNotNullOrWhiteSpace()) data.AddAttributeNode("display-format", fatr.DisplayFormat);

@@ -17,7 +17,7 @@ namespace Azos.Serialization.Bix
   {
     public static readonly UTF8Encoding ENCODING = new UTF8Encoding(false, false);
 
-    public static readonly Atom VERSION = Atom.Encode("0");
+    public const int VERSION = 2;
 
     public const int MAX_BYTE_ARRAY_LEN = 128 * //mb
                                           1024 * //kb
@@ -32,10 +32,13 @@ namespace Azos.Serialization.Bix
     public const int MAX_STRING_ARRAY_CNT = MAX_BYTE_ARRAY_LEN / 48;
     public const int MAX_GUID_ARRAY_LEN = MAX_BYTE_ARRAY_LEN / 16;
     public const int MAX_GDID_ARRAY_LEN = MAX_BYTE_ARRAY_LEN / 12;
+    public const int MAX_RGDID_ARRAY_LEN = MAX_BYTE_ARRAY_LEN / 16;
     public const int MAX_PPTR_ARRAY_LEN = MAX_BYTE_ARRAY_LEN / 12;
     public const int MAX_NLS_ARRAY_LEN = 1024;
     public const int MAX_AMOUNT_ARRAY_LEN = MAX_BYTE_ARRAY_LEN / 16;
     public const int MAX_COLLECTION_LEN = 64 * 1024;
+
+    public const int MAX_ENTITYID_ARRAY_LEN = MAX_BYTE_ARRAY_LEN / 64; //((3atoms * 8bytes) + 40);
 
 
     public const int STR_BUF_SZ = 96 * 1024;// ensure placement in LOH

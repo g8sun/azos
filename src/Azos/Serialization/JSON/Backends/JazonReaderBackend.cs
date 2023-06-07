@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
+
 using Azos.CodeAnalysis.JSON;
 using Azos.CodeAnalysis.Source;
 
@@ -18,22 +20,55 @@ namespace Azos.Serialization.JSON.Backends
   /// </summary>
   public sealed class JazonReaderBackend : IJsonReaderBackend
   {
-    public object DeserializeFromJson(string json, bool caseSensitiveMaps)
+    public object DeserializeFromJson(string json, JsonReadingOptions ropt)
     {
-      var source = new StringSource(json, JsonLanguage.Instance);//todo: reuse instance
-      return JazonParser.Parse(source, caseSensitiveMaps);
+      var source = new StringSource(json, JsonLanguage.Instance);
+      return JazonParser.Parse(source, ropt);
     }
 
-    public object DeserializeFromJson(Stream stream, bool caseSensitiveMaps, Encoding encoding)
+    public object DeserializeFromJson(Stream stream, Encoding encoding, bool useBom, JsonReadingOptions ropt)
     {
-      using (var source = encoding == null ? new StreamSource(stream, JsonLanguage.Instance)
-                                           : new StreamSource(stream, encoding, JsonLanguage.Instance))
-        return JazonParser.Parse(source, caseSensitiveMaps);
+      int bufferSize = 0;
+      int segmentTailThreshold = 0;
+      bool sensitiveData = false;
+
+      if (ropt != null)
+      {
+        bufferSize = ropt.BufferSize;
+        segmentTailThreshold = (int)(ropt.BufferSize * ropt.SegmentTailThresholdPercent);
+        sensitiveData = ropt.SensitiveData;
+      }
+
+      using(var source = new StreamSource(stream, encoding, useBom, JsonLanguage.Instance, null, bufferSize, segmentTailThreshold, sensitiveData))
+      {
+        return JazonParser.Parse(source, ropt);
+      }
     }
 
-    public object DeserializeFromJson(ISourceText source, bool caseSensitiveMaps)
+    public object DeserializeFromJson(ISourceText source, JsonReadingOptions ropt)
+     => JazonParser.Parse(source, ropt);
+
+    public async ValueTask<object> DeserializeFromJsonAsync(Stream stream, Encoding encoding, bool useBom, JsonReadingOptions ropt)
     {
-      return JazonParser.Parse(source, caseSensitiveMaps);
+
+      int bufferSize = 0;
+      int segmentTailThreshold = 0;
+      bool sensitiveData = false;
+
+      if (ropt != null)
+      {
+        bufferSize = ropt.BufferSize;
+        segmentTailThreshold = (int)(ropt.BufferSize * ropt.SegmentTailThresholdPercent);
+        sensitiveData = ropt.SensitiveData;
+      }
+
+      using(var source = new StreamSource(stream, encoding, useBom, JsonLanguage.Instance, null, bufferSize, segmentTailThreshold, sensitiveData))
+      {
+        return await JazonParserAsync.ParseAsync(source, ropt).ConfigureAwait(false);
+      }
     }
+
+    public ValueTask<object> DeserializeFromJsonAsync(ISourceText source, JsonReadingOptions ropt)
+      => JazonParserAsync.ParseAsync(source,  ropt);
   }
 }

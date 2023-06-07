@@ -5,6 +5,7 @@
 </FILE_LICENSE>*/
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -12,6 +13,7 @@ using System.Threading.Tasks;
 
 using Azos.Apps;
 using Azos.Conf;
+using Azos.Serialization.JSON;
 using Azos.Web;
 
 namespace Azos.Client
@@ -22,9 +24,12 @@ namespace Azos.Client
   public class HttpEndpoint : EndpointBase<HttpService>, IHttpEndpoint
   {
     /// <summary>
-    /// Implements internal HttpClient wrapper which supports various aspects (e.g. IDistributedCallFlowAspect)
+    /// Implements internal HttpClient wrapper which supports various aspects (e.g. IAuthImpersonationAspect, IDistributedCallFlowAspect etc.)
     /// </summary>
-    internal class ClientWithAspects : HttpClient, WebCallExtensions.IDistributedCallFlowAspect, WebCallExtensions.IAuthImpersonationAspect
+    internal class ClientWithAspects : HttpClient,
+                                       WebCallExtensions.IDistributedCallFlowAspect,
+                                       WebCallExtensions.IAuthImpersonationAspect,
+                                       WebCallExtensions.IRequestBodyErrorAspect
     {
       public ClientWithAspects(HttpEndpoint endpoint, HttpMessageHandler handler, bool disposeHandler) : base(handler, disposeHandler)
        => Endpoint = endpoint;
@@ -32,14 +37,53 @@ namespace Azos.Client
       public readonly HttpEndpoint Endpoint;
       public string DistributedCallFlowHeader =>  Endpoint.DistributedCallFlowHeader;
       public string AuthImpersonationHeader => Endpoint.AuthImpersonateHeader;
+      public string BodyErrorHeader => Endpoint.BodyErrorAspect?.BodyErrorHeader;
 
       public DistributedCallFlow GetDistributedCallFlow()
         => Endpoint.EnableDistributedCallFlow ? ExecutionContext.CallFlow as DistributedCallFlow : null;
 
-      public string GetAuthImpersonationHeader()
+      public async Task<string> GetAuthImpersonationHeaderAsync(Func<object> fGetIdentityContext)
       {
         if (!Endpoint.AuthImpersonate) return null;//turned off
-        return Ambient.CurrentCallUser.MakeSysTokenAuthHeader().Value;
+
+        var aspectName = Endpoint.AuthAspectName;
+
+        if (aspectName.IsNullOrWhiteSpace())//Use SYS TOKEN
+        {
+          return Ambient.CurrentCallUser.MakeSysTokenAuthHeader().Value;
+        }
+
+        //Use ASPECT
+        var aspect = Endpoint.TryGetAspect<IHttpAuthAspect>(aspectName);
+        aspect.NonNull("IHttpAuthApsect: " + aspectName);
+        var identityContext = fGetIdentityContext != null ? fGetIdentityContext() : null;
+        var result = await aspect.ObtainAuthorizationHeaderAsync(Endpoint, identityContext).ConfigureAwait(false);
+        return result;
+      }
+
+      public async Task ProcessBodyErrorAsync(string uri,
+                                              HttpMethod method,
+                                              object body,
+                                              string contentType,
+                                              JsonWritingOptions options,
+                                              HttpRequestMessage request,
+                                              HttpResponseMessage response,
+                                              bool isSuccess,
+                                              string rawResponseContent,
+                                              IEnumerable<string> bodyErrorValues)
+      {
+        var aspect = Endpoint.BodyErrorAspect;
+        if (aspect == null) return;
+        await aspect.ProcessBodyErrorAsync(uri,
+                                           method,
+                                           body,
+                                           contentType,
+                                           options,
+                                           request,
+                                           response,
+                                           isSuccess,
+                                           rawResponseContent,
+                                           bodyErrorValues).ConfigureAwait(false);
       }
     }
 
@@ -99,11 +143,37 @@ namespace Azos.Client
     public string AuthHeader { get; internal set; }
 
     /// <summary>
-    /// When set to true, attaches Authorization header with `SysToken` scheme and sysAuthToken content, overriding
-    /// the AuthHeader value (if any)
+    /// When set to true, attaches Authorization header either with `SysToken` scheme and sysAuthToken content, overriding
+    /// the AuthHeader value (if any); OR if HttpAuthAspectName is set delegates header value acquisition to that named aspect instance
     /// </summary>
     [Config]
     public bool AuthImpersonate { get; internal set; }
+
+    /// <summary>
+    /// When set, enables acquisition of AUTH header value from IHttpAuthAspect with the specified name
+    /// </summary>
+    [Config]
+    public string AuthAspectName { get; internal set; }
+
+    /// <summary>
+    /// When set, enables body error processing via a named aspect
+    /// </summary>
+    [Config]
+    public string BodyErrorAspectName { get; internal set; }
+
+    /// <summary>
+    /// Returns the effective aspect for this endpoint or null if not configured
+    /// </summary>
+    public IHttpBodyErrorAspect BodyErrorAspect
+    {
+      get
+      {
+        var aname = BodyErrorAspectName;
+        if (aname.IsNullOrWhiteSpace()) return null;
+        return this.TryGetAspect<IHttpBodyErrorAspect>(aname);
+      }
+    }
+
 
     /// <summary>
     /// When set, overrides the standard HTTP `Authorization` header name when impersonation is used
@@ -113,6 +183,9 @@ namespace Azos.Client
 
     [Config(Default = true)]
     public bool AcceptJson { get; internal set; } = true;
+
+    [Config(Default = true)]
+    public bool AcceptBixon { get; internal set; } = true;
 
     [Config]
     public bool UseCookies { get; internal set; }
@@ -189,6 +262,9 @@ namespace Azos.Client
 
       if (AcceptJson)
         result.DefaultRequestHeaders.Accept.ParseAdd(ContentType.JSON);
+
+      if (AcceptBixon)//#874 20230604 DKh
+        result.DefaultRequestHeaders.Accept.ParseAdd(ContentType.BIXON);
 
       //If impersonation is used, it attaches headers per call obtained from Ambient security context
       //https://stackoverflow.com/questions/50399003/send-httpclient-request-without-defaultrequestheaders

@@ -15,7 +15,7 @@ namespace Azos.Security
   /// Note: The password is stored as plain text
   /// </summary>
   [Serializable]
-  public class IDPasswordCredentials : Credentials, IStringRepresentableCredentials
+  public sealed class IDPasswordCredentials : Credentials, IStringRepresentableCredentials
   {
     /// <summary>
     /// Obtains an unsecured string password as SecureBuffer.
@@ -39,7 +39,6 @@ namespace Azos.Security
       return buffer;
     }
 
-
     /// <summary>
     /// Creates IDPass credentials from base64 encoded auth header content as provided by RepresentAsString() method.
     /// Returns null if the content is unparsable
@@ -53,7 +52,7 @@ namespace Azos.Security
 
       if (concat.IsNullOrWhiteSpace()) return null;
 
-      var i = concat.IndexOf(':');
+      var i = concat.LastIndexOf(':');//AZ #812
       if (i < 0) return new IDPasswordCredentials(concat, null);
 
       var id = i == 0 ? null : concat.Substring(0, i);
@@ -74,9 +73,7 @@ namespace Azos.Security
     /// </summary>
     public IDPasswordCredentials(IConfigSectionNode cfg)
     {
-      if (cfg == null || !cfg.Exists)
-        throw new SecurityException(StringConsts.ARGUMENT_ERROR + "IDPasswordCredentials.ctor(cfg=null|!exists)");
-
+      cfg.NonEmpty(nameof(cfg));
       ConfigAttribute.Apply(this, cfg);
     }
 
@@ -91,7 +88,7 @@ namespace Azos.Security
     /// Note: The IDPasswordCredentials class is purposely designed to store password as plain text.
     /// This is needed for simple cases and HTTP application where login credentials are posted via plain text anyway
     /// </summary>
-    public SecureBuffer SecurePassword { get { return PlainPasswordToSecureBuffer(m_Password); } }
+    public SecureBuffer SecurePassword => PlainPasswordToSecureBuffer(m_Password);
 
     /// <summary>
     /// Deletes sensitive password information.
@@ -107,6 +104,8 @@ namespace Azos.Security
       base.Forget();
     }
 
+    public override string ToString() => "{0}(`{1}`)".Args(GetType().Name, ID);
+
     /// <summary>
     /// Converts plain credentials to basic auth using base64
     /// </summary>
@@ -119,11 +118,6 @@ namespace Azos.Security
       var encoded = Encoding.UTF8.GetBytes(concat);
 
       return Convert.ToBase64String(encoded, Base64FormattingOptions.None);
-    }
-
-    public override string ToString()
-    {
-      return "{0}({1})".Args(GetType().Name, ID);
     }
   }
 }

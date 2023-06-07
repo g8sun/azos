@@ -22,7 +22,7 @@ namespace Azos.Security
   /// <remarks>
   /// <para>
   /// A message to be Protect()-ed is supplied as a byte[].
-  /// First, we generate a crypto random IV of 128 bits, then we computer HMAC(iv + originalMsg, hmac_keyX).
+  /// First, we generate a crypto random IV of 128 bits, then we compute HMAC(iv + originalMsg, hmac_keyX).
   /// Notice, that the HMAC is based on the originalMessage AND the IV which is random for every call.
   /// An attacker may not "recreate" the original payload from hash (ensured by one-way HMAC).
   /// </para>
@@ -91,6 +91,8 @@ namespace Azos.Security
 
       var iv = ComponentDirector.GenerateRandomBytes(IV_LEN);
       var keys = getKeys(iv);
+
+      //https://crypto.stackexchange.com/questions/202/should-we-mac-then-encrypt-or-encrypt-then-mac
       var hmac = getHMAC(keys.hmac, new ArraySegment<byte>(iv), originalMessage);
 
       using (var aes = makeAES())
@@ -115,30 +117,29 @@ namespace Azos.Security
       try
       {
         data = new ArraySegment<byte>(protectedMessage.NonBlank(nameof(protectedMessage)).FromWebSafeBase64());
+        return Unprotect(data); //Az #801
       }
       catch (Exception error)
       {
         WriteLog(Log.MessageType.TraceErrors, nameof(UnprotectFromString), "Leaked on bad message: " + error.ToMessageWithType(), error);
         return null;
       }
-
-      return Unprotect(data);
     }
 
     public override byte[] Unprotect(ArraySegment<byte> protectedMessage)
     {
-      protectedMessage.Array.NonNull(nameof(protectedMessage));
-      if (protectedMessage.Count < HDR_LEN + 1)
-        throw new SecurityException(StringConsts.ARGUMENT_ERROR + "{0}.Unprotect(protectedMessage.Count < {1})".Args(GetType().Name, HDR_LEN));
-
-      var iv = new byte[IV_LEN];
-      var hmac = new byte[HMAC_LEN];
-      Array.Copy(protectedMessage.Array, protectedMessage.Offset, iv, 0, IV_LEN);
-      Array.Copy(protectedMessage.Array, protectedMessage.Offset + IV_LEN, hmac, 0, HMAC_LEN);
-      var keys = getKeys(iv);
-
-      try
+      try //AZ #801
       {
+        protectedMessage.Array.NonNull(nameof(protectedMessage));
+        if (protectedMessage.Count < HDR_LEN + 1)
+          throw new SecurityException(StringConsts.ARGUMENT_ERROR + "{0}.Unprotect(protectedMessage.Count < {1})".Args(GetType().Name, HDR_LEN));
+
+        var iv = new byte[IV_LEN];
+        var hmac = new byte[HMAC_LEN];
+        Array.Copy(protectedMessage.Array, protectedMessage.Offset, iv, 0, IV_LEN);
+        Array.Copy(protectedMessage.Array, protectedMessage.Offset + IV_LEN, hmac, 0, HMAC_LEN);
+        var keys = getKeys(iv);
+
         using (var aes = makeAES())
         {
           using (var decrypt = aes.CreateDecryptor(keys.aes, iv))
@@ -153,9 +154,11 @@ namespace Azos.Security
           }
         }
       }
-      catch(Exception error)
+      catch(Exception error) //WARNING: NEVER disclose the REASOn of error to the caller, just return null
       {
         WriteLog(Log.MessageType.TraceErrors, nameof(Unprotect), "Leaked on bad message: " + error.ToMessageWithType(), error);
+
+        //WARNING: NEVER disclose the REASON of error to the caller, just return null
         return null;
       }
     }
@@ -165,7 +168,7 @@ namespace Azos.Security
       var aes = new AesManaged();
       aes.Mode = CipherMode.CBC;//Cipher Block Chaining requires random 128bit IV
       aes.KeySize = 256;
-      aes.Padding = PaddingMode.PKCS7;
+      aes.Padding = PaddingMode.PKCS7;//use Zeros, PKCS7 is dangerous with CBC AZ #759
       return aes;
     }
 

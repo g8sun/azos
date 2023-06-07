@@ -10,6 +10,7 @@ using System.Linq;
 
 using Azos.Conf;
 using Azos.Instrumentation;
+using Azos.Serialization.JSON;
 
 namespace Azos.Apps
 {
@@ -232,9 +233,6 @@ namespace Azos.Apps
     /// </summary>
     public IApplicationComponent ComponentDirector => m_ComponentDirector;
 
-#warning REMOVE asap WAVE handler refactoring
-    internal void __setComponentDirector(IApplicationComponent director) { m_ComponentDirector = director; }
-
     /// <summary>
     /// Sets the log level for this component, if not defined then the component logger uses the director/log level
     /// via the ComponentEffectiveLogLevel property
@@ -242,6 +240,13 @@ namespace Azos.Apps
     [Config("$log-level|$component-log-level|$cmp-log-level")]
     [ExternalParameter(CoreConsts.EXT_PARAM_GROUP_LOG)]
     public Log.MessageType? ComponentLogLevel { get; set; }
+
+    /// <summary>
+    /// When set to true, prevents auto `ErrorInfo` generation for error log messages
+    /// </summary>
+    [Config]
+    [ExternalParameter(CoreConsts.EXT_PARAM_GROUP_LOG)]
+    public virtual bool ComponentLogSuppressAutoErrorInfo { get; set; }
 
     /// <summary>
     /// Determines the effective log level for this component, taking it from director if it is not defined on this level
@@ -318,9 +323,49 @@ namespace Azos.Apps
 
       msg.InitDefaultFields(App);
 
-      if (related.HasValue) msg.RelatedTo = related.Value;
+      if (related.HasValue)
+      {
+        msg.RelatedTo = related.Value;
+      }
+      else//20230417 DKh JPK JGW
+      {
+        var cfid = Ambient.CurrentCallFlow?.ID;
+        if (cfid.HasValue) msg.RelatedTo = cfid.Value;
+      }
 
       App.Log.Write(msg);
+
+      //#855 20230418 DKh
+      if (type >= Log.MessageType.Error &&
+          !ComponentLogSuppressAutoErrorInfo &&
+          ExecutionContext.CallFlow is DistributedCallFlow dcf &&
+          !dcf.WasLogged)//emit ErroInfo
+      {
+        dcf.SetWasLogged();//prevent multiple logging in the dcf
+
+        var eiParJson = new
+        {
+          iderr = msg.Guid, //guid of parent error message
+          call = dcf//distributed call flow
+        }.ToJson(JsonWritingOptions.CompactASCII);
+
+        var eimsg = new Log.Message
+        {
+          App = msg.App,
+          Topic = msg.Topic,
+          From = msg.From,
+          Type = Log.MessageType.ErrorInfo,
+          Source = msg.Source,
+          Text = msg.Guid.ToString("N"),
+          Exception = null,
+          Parameters = eiParJson,
+        };
+
+        eimsg.RelatedTo = msg.RelatedTo;
+        if (eimsg.RelatedTo == Guid.Empty) eimsg.RelatedTo = msg.Guid;
+
+        App.Log.Write(eimsg);
+      }//ErrorInfo
 
       return msg.Guid;
     }

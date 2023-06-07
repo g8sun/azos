@@ -57,9 +57,9 @@ namespace Azos.Log
     TraceSQL,
 
     /// <summary>
-    /// Emitted by Glue/Net code
+    /// Emitted by network-related or Glue-related communication code
     /// </summary>
-    TraceGlue,
+    TraceNetGlue,
 
     /// <summary>
     /// Last trace-related message type for use in trace-related max-level config setting
@@ -118,6 +118,12 @@ namespace Azos.Log
     /// SYSLOG.Error Non-urgent failures, these should be relayed to developers or admins; each item must be resolved within a given time.
     /// </summary>
     Error = 500,
+
+    /// <summary>
+    /// Provides additional information details about errors, such as extra object dumps describing call context/flow/stack in their params.<br/>
+    /// Messages of this type usually correlate with original `Error` message
+    /// </summary>
+    ErrorInfo = 501,
 
     /// <summary>
     /// SYSLOG.Critical Should be corrected immediately, but indicates failure in a primary system, an example is a loss of a backup ISP connection.

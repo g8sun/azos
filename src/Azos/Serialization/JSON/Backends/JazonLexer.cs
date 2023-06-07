@@ -15,69 +15,26 @@ using Azos.CodeAnalysis.Source;
 
 namespace Azos.Serialization.JSON.Backends
 {
-  public struct JazonToken
+  internal sealed class JazonLexer : IEnumerator<JazonToken>, IEnumerable<JazonToken>
   {
-    // Error
-    internal JazonToken(JsonMsgCode code, string text)
-    {
-      Type = (JsonTokenType)(-1);
-      Text = text;
-      ULValue = (ulong)code;
-      DValue = 0d;
-    }
-
-    // Identifier
-    internal JazonToken(JsonTokenType type, string text)
-    {
-      Type = type;
-      Text = text;
-      ULValue = 0ul;
-      DValue = 0d;
-    }
-
-    //Int, or Long value
-    internal JazonToken(JsonTokenType type, string text, ulong ulValue)
-    {
-      Type = type;
-      Text = text;
-      ULValue = ulValue;
-      DValue = 0d;
-    }
-
-    //Double value
-    internal JazonToken(JsonTokenType type,  string text, double dValue)
-    {
-      Type = type;
-      Text = text;
-      ULValue = 0ul;
-      DValue = dValue;
-    }
-
-    public readonly JsonTokenType Type;
-
-    public readonly string Text;
-
-    //To avoid boxing the primitives are stored in-place, StructLayout Explicit with overlap of long over dbl does not yield any benefits
-    public readonly ulong ULValue;//bool is stored as 1
-    public readonly double DValue;
-
-    public bool IsError => Type < 0;
-    public JsonMsgCode MsgCode => IsError ? (JsonMsgCode)ULValue : JsonMsgCode.INFOS;
-    public bool IsPrimary => Type > JsonTokenType.SYMBOLS_START; //  !IsNonLanguage && Type != JsonTokenType.tComment;
-    public bool IsNonLanguage => Type==JsonTokenType.tUnknown || (Type > JsonTokenType.NONLANG_START && Type < JsonTokenType.NONLANG_END);
-  }
-
-
-
-  internal class JazonLexer : IEnumerator<JazonToken>, IEnumerable<JazonToken>
-  {
-    public JazonLexer(ISourceText src)
+    public JazonLexer(ISourceText src, JsonReadingOptions ropt)
     {
       source = src;
+      this.ropt = ropt;
+      this.ropt_MaxCharLength = ropt.MaxCharLength;
+      this.ropt_MaxStringLength = ropt.MaxStringLength;
+      this.ropt_MaxCommentLength = ropt.MaxCommentLength;
 
-      buffer = new StringBuilder(256);//caching this in TLS does not change much
+      if (ropt.TimeoutMs > 0) ropt_Timeter = Time.Timeter.StartNew();
 
+      fsmResources = FsmBag.Get();
+      buffer =  fsmResources.Buffer;
       result = run().GetEnumerator();
+    }
+
+    public void ReuseResources()
+    {
+      FsmBag.Release(fsmResources);
     }
 
     public bool MoveNext() => result.MoveNext();
@@ -90,9 +47,18 @@ namespace Azos.Serialization.JSON.Backends
     IEnumerator<JazonToken> IEnumerable<JazonToken>.GetEnumerator() => result;
 
 
-    private readonly IEnumerator<JazonToken> result;
-    private readonly ISourceText source;
+    internal readonly IEnumerator<JazonToken> result;
+    internal readonly ISourceText source;
+    internal readonly JsonReadingOptions ropt;
+    private readonly int ropt_MaxCharLength;
+    private readonly int ropt_MaxStringLength;
+    private readonly int ropt_MaxCommentLength;
+    private readonly Time.Timeter ropt_Timeter;
 
+    internal int parserTotalObjects;
+    internal int parserTotalArrays;
+
+    internal FsmBag fsmResources;
     char chr, nchr;
     bool wasFlush;
     bool isError;
@@ -122,6 +88,9 @@ namespace Azos.Serialization.JSON.Backends
       posCol++;
       chr = source.ReadChar();
       nchr = source.PeekChar();
+
+      //#833 - update circular char buffer for error reporting (if enabled)
+      fsmResources.AddChar(chr);
     }
 
     //this is done on purpose do NOT use Char.isSymbol in .NET
@@ -154,6 +123,36 @@ namespace Azos.Serialization.JSON.Backends
       while (!source.EOF)
       {
         moveNext();
+
+        #region #731 limits
+        if (ropt_MaxCharLength != 0)
+        {
+          if (posChar >= ropt_MaxCharLength)
+          {
+            yield return new JazonToken(JsonMsgCode.eLimitExceeded, "Content length over {0:n0} char limit".Args(ropt_MaxCharLength));
+            yield break;//no further parsing
+          }
+        }
+
+        if (ropt_MaxCommentLength != 0 && (isCommentBlock || isCommentLine))
+        {
+          if (buffer.Length >= ropt_MaxCommentLength)
+          {
+            yield return new JazonToken(JsonMsgCode.eLimitExceeded, "Comment length over {0:n0} char limit".Args(ropt_MaxCommentLength));
+            yield break;//no further parsing
+          }
+        }
+
+        if (ropt_MaxStringLength != 0 && isString)
+        {
+          if (buffer.Length >= ropt_MaxStringLength)
+          {
+            yield return new JazonToken(JsonMsgCode.eLimitExceeded, "String length over {0:n0} char limit".Args(ropt_MaxStringLength));
+            yield break;//no further parsing
+          }
+        }
+        #endregion
+
 
         #region CRLF
         if ((chr == '\n') || (chr == '\r'))
@@ -435,6 +434,16 @@ namespace Azos.Serialization.JSON.Backends
 
     private JazonToken flush()
     {
+      if (ropt_Timeter.IsStarted)
+      {
+        if (ropt_Timeter.ElapsedMs > ropt.TimeoutMs)
+        {
+          isError = true;
+          return new JazonToken(JsonMsgCode.eLimitExceeded, "Over {0:n0} ms. timeout".Args(ropt.TimeoutMs));
+        }
+      }
+
+
       if (
           (buffer.Length == 0) &&
           (!isString) &&
@@ -512,10 +521,7 @@ namespace Azos.Serialization.JSON.Backends
         else
         {
           text = buffer.ToString();
-
-      //    if (text == "null")    { buffer.Clear(); return new JazonToken(JsonTokenType.tNull, "null"); }
           if (text == "false") { buffer.Clear(); return new JazonToken(JsonTokenType.tFalse, "false"); }
-      //    if (text == "true")  { buffer.Clear(); return new JazonToken(JsonTokenType.tTrue, "true"); }
         }
         buffer.Clear();
 

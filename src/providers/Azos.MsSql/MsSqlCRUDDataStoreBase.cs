@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 using Azos.Apps;
 using Azos.Conf;
 
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace Azos.Data.Access.MsSql
 {
@@ -23,7 +23,7 @@ namespace Azos.Data.Access.MsSql
   /// for general-purposes cases due to inconsistent/unpredictable use of data types in a non-uniform schema designs.
   /// Contrast this class with <seealso cref="MsSqlCanonicalDataStore"/>
   /// </summary>
-  public abstract class MsSqlCRUDDataStoreBase : MsSqlDataStoreBase, ICRUDDataStoreImplementation
+  public abstract class MsSqlCRUDDataStoreBase : MsSqlDataStoreBase, ICrudDataStoreImplementation
   {
     #region CONSTS
     public const string SCRIPT_FILE_SUFFIX = ".mss.sql";
@@ -56,13 +56,13 @@ namespace Azos.Data.Access.MsSql
     public bool SupportsTransactions   => true;
     public bool SupportsTrueAsynchrony => true;
     public string ScriptFileSuffix     => SCRIPT_FILE_SUFFIX;
-    public CRUDDataStoreType StoreType => CRUDDataStoreType.Relational;
+    public CrudDataStoreType StoreType => CrudDataStoreType.Relational;
 
-    public CRUDTransaction BeginTransaction(IsolationLevel iso = IsolationLevel.ReadCommitted,
+    public CrudTransaction BeginTransaction(IsolationLevel iso = IsolationLevel.ReadCommitted,
                                             TransactionDisposeBehavior behavior = TransactionDisposeBehavior.CommitOnDispose)
      => BeginTransactionAsync(iso, behavior).GetAwaiter().GetResult();
 
-    public async Task<CRUDTransaction> BeginTransactionAsync(IsolationLevel iso = IsolationLevel.ReadCommitted,
+    public async Task<CrudTransaction> BeginTransactionAsync(IsolationLevel iso = IsolationLevel.ReadCommitted,
                                                              TransactionDisposeBehavior behavior = TransactionDisposeBehavior.CommitOnDispose)
     {
       var cnn = await GetConnection().ConfigureAwait(false);
@@ -156,19 +156,19 @@ namespace Azos.Data.Access.MsSql
         return await DoDeleteAsync(cnn,  null, row, key).ConfigureAwait(false);
     }
 
-    public int ExecuteWithoutFetch(params Query[] queries)
-     => ExecuteWithoutFetchAsync(queries).GetAwaiter().GetResult();
+    public Doc Execute(Query query)
+     => ExecuteAsync(query).GetAwaiter().GetResult();
 
-    public async Task<int> ExecuteWithoutFetchAsync(params Query[] queries)
+    public async Task<Doc> ExecuteAsync(Query query)
     {
       using (var cnn = await GetConnection().ConfigureAwait(false))
-        return await DoExecuteWithoutFetchAsync(cnn, null, queries).ConfigureAwait(false);
+        return await DoExecuteAsync(cnn, null, query).ConfigureAwait(false);
     }
 
-    public CRUDQueryHandler MakeScriptQueryHandler(QuerySource querySource)
+    public CrudQueryHandler MakeScriptQueryHandler(QuerySource querySource)
      => new MsSqlCRUDScriptQueryHandler(this, querySource);
 
-    public ICRUDQueryResolver QueryResolver => m_QueryResolver;
+    public ICrudQueryResolver QueryResolver => m_QueryResolver;
 
     #endregion
 
@@ -256,30 +256,25 @@ namespace Azos.Data.Access.MsSql
     /// <summary>
     ///  Performs CRUD execution of queries that do not return result set. Override to do custom Query interpretation
     /// </summary>
-    protected internal async virtual Task<int> DoExecuteWithoutFetchAsync(SqlConnection cnn, SqlTransaction transaction, Query[] queries)
+    protected internal async virtual Task<Doc> DoExecuteAsync(SqlConnection cnn, SqlTransaction transaction, Query query)
     {
-      if (queries==null) return 0;
+      if (query==null) return null;
 
-      var affected = 0;
 
-      foreach(var query in queries)
+      var handler = QueryResolver.Resolve(query);
+      try
       {
-        var handler = QueryResolver.Resolve(query);
-        try
-        {
-          affected += await handler.ExecuteWithoutFetchAsync(new MsSqlCRUDQueryExecutionContext(this, cnn, transaction), query).ConfigureAwait(false);
-        }
-        catch (Exception error)
-        {
-          throw new MsSqlDataAccessException(
-                          StringConsts.EXECUTE_WITHOUT_FETCH_ERROR + error.ToMessageWithType(),
-                          error,
-                          KeyViolationKind.Unspecified,
-                          CRUDGenerator.KeyViolationName(error));
-        }
+        return await handler.ExecuteProcedureAsync(new MsSqlCRUDQueryExecutionContext(this, cnn, transaction), query)
+                            .ConfigureAwait(false);
       }
-
-      return affected;
+      catch (Exception error)
+      {
+        throw new MsSqlDataAccessException(
+                        StringConsts.EXECUTE_WITHOUT_FETCH_ERROR + error.ToMessageWithType(),
+                        error,
+                        KeyViolationKind.Unspecified,
+                        CRUDGenerator.KeyViolationName(error));
+      }
     }
 
     /// <summary>
