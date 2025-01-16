@@ -18,6 +18,12 @@ namespace Azos
     /// </summary>
     public const string SKY_HOME = "SKY_HOME";
 
+    /// <summary>
+    /// Default name of directory which is used testing data output
+    /// </summary>
+    public const string SKY_TESTING_HOME_DIR = "testing";
+
+
     public const string NULL_STRING = "<null>";
 
     public const int ABS_HASH_MASK = 0x7FFFFFFF;
@@ -58,6 +64,7 @@ namespace Azos
     public const string EXT_STATUS_KEY_SCHEMA = "schema";
     public const string EXT_STATUS_KEY_FIELD = "field";
     public const string EXT_STATUS_KEY_MESSAGE = "message";
+    public const string EXT_STATUS_KEY_SCOPE = "scope";
 
     public const string EXT_STATUS_KEY_BATCH = "batch";
 
@@ -66,6 +73,9 @@ namespace Azos
     public const string EXT_STATUS_KEY_CONTENT = "content";
     public const string EXT_STATUS_KEY_CONTROLLER = "controller";
     public const string EXT_STATUS_KEY_ACTION = "action";
+
+    public const string EXT_STATUS_KEY_SITE = "site";
+    public const string EXT_STATUS_KEY_CLAUSE = "clause";
 
     public const string EXT_STATUS_KEY_HTTP_CODE = "http::code";
     public const string EXT_STATUS_KEY_HTTP_DESCRIPTION = "http::descr";

@@ -24,8 +24,22 @@ namespace Azos.Data
   /// </summary>
   public struct EntityId : IEquatable<EntityId>, IDistributedStableHashProvider, IJsonReadable, IJsonWritable, IRequiredCheck, IValidatable
   {
-    private static readonly JsonWritingOptions COMPOSITE_ADDRESS_JSON_FORMAT = new JsonWritingOptions(JsonWritingOptions.CompactRowsAsMap)
+    //MUST be private and NOT derive from other JSON styles
+    private static readonly JsonWritingOptions COMPOSITE_ADDRESS_JSON_FORMAT = new JsonWritingOptions
     {
+      RowMapTargetName = null,
+      MaxNestingLevel = 10,
+      Purpose = JsonSerializationPurpose.Unspecified,
+      EnableTypeHints = false,
+      RowsAsMap = true,
+      RowsetMetadata = false,
+      ASCIITarget = false,
+        IndentWidth = 0,
+        MemberLineBreak = false,
+        SpaceSymbols = false,
+        ObjectLineBreak = false,
+      NLSMapLanguageISO = CoreConsts.ISOA_LANG_ENGLISH,
+    //=================================================
       MapSkipNulls = true,
       MapSortKeys = true,
       ISODates = true
@@ -124,7 +138,8 @@ namespace Azos.Data
       {
         if (Address.IsNullOrWhiteSpace()) return null;
         IsCompositeAddress.IsTrue(nameof(IsCompositeAddress));
-        var result = Address.JsonToDataObject() as JsonDataMap;//may throw on invalid
+        var result = Address.JsonToDataObject()
+                            .ExpectJsonDataMap();//may throw on invalid
         return result;
       }
     }
@@ -146,7 +161,7 @@ namespace Azos.Data
         }
         catch
         {
-          state = new ValidState(state, new FieldValidationException(nameof(EntityId), scope.Default("<entityId>"), "Invalid composite value"));
+          state = new ValidState(state, new FieldValidationException(nameof(EntityId), scope.Default("<eid>"), "Invalid composite value", scope));
         }
       }
       return state;
@@ -166,7 +181,7 @@ namespace Azos.Data
       }
     }
 
-    public override string ToString() => IsAssigned ? "{0}(`{1}`)".Args(GetType().Name, AsString) : string.Empty;
+    public override string ToString() => AsString;//20230816 DKh JPK JGW // IsAssigned ? "{0}(`{1}`)".Args(GetType().Name, AsString) : string.Empty;
 
     public override int GetHashCode() => System.GetHashCode() ^
                                          Type.GetHashCode() ^

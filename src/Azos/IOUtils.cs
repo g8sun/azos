@@ -1426,23 +1426,21 @@ namespace Azos
     /// Represents a segment of byte[] as a web-safe string, replacing `+` with `-` and `/` with `_`
     /// so the value may be included in URI without any extra encoding. Returns null for null buffer
     /// </summary>
-    public static unsafe string ToWebSafeBase64(this ArraySegment<byte> buf)
+    public static string ToWebSafeBase64(this ArraySegment<byte> buf)
     {
       if (buf == null) return null;
-      var str = Convert.ToBase64String(buf.Array, buf.Offset, buf.Count,  Base64FormattingOptions.None);
-      char* chars = stackalloc char[str.Length];
+      var cbuf = new char[4 + ((buf.Count / 3) * 4)];
+      var sz = Convert.ToBase64CharArray(buf.Array, buf.Offset, buf.Count, cbuf, 0);
       var cnt = 0;
-      for(var i=0; i<str.Length; i++)
+      for (var i = 0; i < sz; i++)
       {
-        var c = str[i];
-        if (c=='=') break;
-        if (c=='+') c = '-';
-        else if (c=='/') c = '_';
-        chars[i] = c;
+        var c = cbuf[i];
+        if (c == '=') break;
+        if (c == '+') cbuf[i] = '-';
+        else if (c == '/') cbuf[i] = '_';
         cnt++;
       }
-
-      return new string(chars, 0, cnt);
+      return new string(cbuf, 0, cnt);
     }
 
     /// <summary>
@@ -1454,27 +1452,30 @@ namespace Azos
     {
       if (content.IsNullOrWhiteSpace()) return null;
 
-      var cl = content.Length;
-      var pl = cl % 4;
+      var charLen = 0;
+      var cbuf = new char[content.Length + 4]; //+ max padding of 4
+      for (var i = 0; i < content.Length; i++)
+      {
+        var c = content[i];
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
+        {
+          continue;//skip these characters
+        }
+
+        if (c == '-') c = '+';
+        else if (c == '_') c = '/';
+
+        cbuf[charLen++] = c;
+      }
+
+      for(var i = charLen; i < cbuf.Length; i++) cbuf[i] = '=';
+
+      var pl = charLen % 4;
       if (pl==2) pl = 2;
       else if (pl==3) pl = 1;
       else pl = 0;
 
-      var chars = new char[cl + pl];
-      for (var i = 0; i < chars.Length; i++)
-      {
-        if (i<content.Length)
-        {
-          var c = content[i];
-          if (c == '-') c = '+';
-          else if (c == '_') c = '/';
-          chars[i] = c;
-        }
-        else
-          chars[i] = '=';
-      }
-
-      return Convert.FromBase64CharArray(chars, 0, chars.Length);
+      return Convert.FromBase64CharArray(cbuf, 0, charLen + pl);
     }
 
     /// <summary>
@@ -1560,6 +1561,48 @@ namespace Azos
       }
 
       return result.ToString();
+    }
+
+    /// <summary>
+    /// Returns true if the path segment can be used on *Nix or Windows systems
+    /// </summary>
+    public static bool IsValidWindowsOrNixPathSegment(this string seg)
+    {
+      if (seg.IsNullOrWhiteSpace()) return false;
+
+      //Windows does not allow trailing dot
+      if (seg.EndsWith('.')) return false;
+
+      for(var i=0; i<seg.Length; i++)
+      {
+        var one = seg[i];
+        if (one < 0x20) return false;//Windows control characters
+        if (RESERVED_FILESYSTEM_CHARS.Contains(one)) return false;
+      }
+
+      return true;
+    }
+
+    private static readonly HashSet<char> RESERVED_FILESYSTEM_CHARS = new HashSet<char>()
+    {
+      '<', '>', ':', '"', '/', '\\', '\'', '|', '?', '*'
+    };
+
+    private static readonly HashSet<string> RESERVED_FILE_NAMES = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+      "CON", "PRN", "AUX", "NUL",
+      "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+      "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+
+    public static bool IsValidWindowsOrNixFileName(this string seg)
+    {
+      if (!IsValidWindowsOrNixPathSegment(seg)) return false;
+      if (RESERVED_FILE_NAMES.Contains(seg))  return false;
+
+      var fn = Path.GetFileNameWithoutExtension(seg);
+      if (RESERVED_FILE_NAMES.Contains(fn)) return false;
+      return true;
     }
 
   }

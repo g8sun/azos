@@ -43,6 +43,7 @@ namespace Azos.Apps
     public const string CONFIG_FORCE_INVARIANT_CULTURE_ATTR = "force-invariant-culture";
     public const string CONFIG_ENVIRONMENT_NAME_ATTR = "environment-name";
     public const string CONFIG_PROCESS_INCLUDES = "process-includes";
+    public const string CONFIG_PROCESS_EXCLUDES = "process-excludes";
 
     public const string CONFIG_EXPECTED_COMPONENT_SHUTDOWN_DURATION_MS = "expected-component-shutdown-duration-ms";
     public const int DFLT_EXPECTED_COMPONENT_SHUTDOWN_DURATION_MS = 1_250;
@@ -67,6 +68,7 @@ namespace Azos.Apps
 
     public const string CONFIG_PATH_ATTR = "path";
     public const string CONFIG_ENABLED_ATTR = "enabled";
+    public const string CONFIG_CHASSIS_LOG_LEVEL_ATTR = "chassis-log-level";
 
     #endregion
 
@@ -83,7 +85,25 @@ namespace Azos.Apps
       appConfigRoot.NonNull(nameof(appConfigRoot));
       var includePragma = appConfigRoot.AttrByName(CONFIG_PROCESS_INCLUDES).Value;
       if (includePragma.IsNotNullOrWhiteSpace())
+      {
         appConfigRoot.ProcessAllExistingIncludes(nameof(CommonApplicationLogic), includePragma);
+      }
+    }
+
+    /// <summary>
+    /// Processes all exclude pragmas if they are specified in the root `process-exclude` attribute.
+    /// This method is called for auto-loaded entry point config automatically.
+    /// You may call this method for configs acquired from external sources prior to
+    /// passing it to application .ctor
+    /// </summary>
+    public static void ProcessConfigurationExcludes(ConfigSectionNode appConfigRoot)
+    {
+      appConfigRoot.NonNull(nameof(appConfigRoot));
+      var excludePragma = appConfigRoot.AttrByName(CONFIG_PROCESS_EXCLUDES).Value;
+      if (excludePragma.IsNotNullOrWhiteSpace())
+      {
+        appConfigRoot.ProcessExcludes(true, true, nameof(CommonApplicationLogic), excludePragma);
+      }
     }
 
     //fx internal, called by derivatives
@@ -225,14 +245,17 @@ namespace Azos.Apps
     /// <summary>Provides access to "environment-name" attribute, e.g. "DEV" vs "PROD"</summary>
     public string EnvironmentName => m_ConfigRoot.AttrByName(CONFIG_ENVIRONMENT_NAME_ATTR).Value;
 
-    /// <summary>Provides access to "copyright" attribute, e.g. "(c) 2021 Azist Group"</summary>
-    public string Copyright => m_ConfigRoot.AttrByName(CONFIG_COPYRIGHT_ATTR).Value.Default("2021 Azist Group");
+    /// <summary>Provides access to "copyright" attribute, e.g. "(c) 2023 Azist Group"</summary>
+    public string Copyright => m_ConfigRoot.AttrByName(CONFIG_COPYRIGHT_ATTR).Value.Default("2023 Azist Group");
 
     /// <summary>Provides access to "description" attribute, e.g. "xyz application"</summary>
     public string Description => m_ConfigRoot.AttrByName(CONFIG_DESCRIPTION_ATTR).Value.Default("AZ OS application");
 
     /// <summary>True to force app container set process-wide invariant culture on boot</summary>
     public virtual bool ForceInvariantCulture => m_ConfigRoot.AttrByName(CONFIG_FORCE_INVARIANT_CULTURE_ATTR).ValueAsBool();
+
+    /// <summary>Application chassis logging log level, default is `Info`</summary>    //#884
+    public MessageType ChassisLogLevel => m_ConfigRoot.AttrByName(CONFIG_CHASSIS_LOG_LEVEL_ATTR).ValueAsEnum(MessageType.Info);
 
     /// <summary>
     /// Provides a default expected shutdown duration for various constituent components of the application.
@@ -518,7 +541,7 @@ namespace Azos.Apps
                             Guid? related = null)
     {
       var log = m_Log;
-      if (log == null) return Guid.Empty;
+      if (log == null || type < ChassisLogLevel) return Guid.Empty;
 
       var msg = new Message
       {
@@ -573,6 +596,9 @@ namespace Azos.Apps
 
       //20190416 DKh added support for root config pragma includes
       ProcessAllExistingConfigurationIncludes(conf.Root);
+
+      //20230722 DKh added support for root pragma excludes #888
+      ProcessConfigurationExcludes(conf.Root);
 
       return conf;
     }

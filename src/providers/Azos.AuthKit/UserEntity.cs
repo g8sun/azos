@@ -25,6 +25,22 @@ namespace Azos.AuthKit
   [UniqueSequence(Constraints.ID_NS_AUTHKIT, Constraints.ID_SEQ_USER)]
   public sealed class UserEntity : EntityBase<IIdpUserCoreLogic, ChangeResult>
   {
+    public static UserEntity FromUserInfo(UserInfo info)
+    {
+      if (info==null) return null;
+      var result = new UserEntity();
+      result.Gdid = info.Gdid;
+      result.Name = info.Name;
+      result.Level = info.Level;
+      result.Description = info.Description;
+      result.ValidSpanUtc = info.ValidSpanUtc;
+      result.OrgUnit = info.OrgUnit;
+      result.Props = info.Props;
+      result.Rights = info.Rights != null && info.Rights.Content.IsNotNullOrWhiteSpace() ? new ConfigVector(info.Rights.Content) : null;
+      result.Note = info.Note;
+      return result;
+    }
+
     public override EntityId Id => new EntityId(Constraints.SYS_AUTHKIT,
                                                 Constraints.ETP_USER,
                                                 Constraints.SCH_GDID, Gdid.ToString());
@@ -84,7 +100,7 @@ namespace Azos.AuthKit
     /// <summary>
     /// Free form text notes associated with the account
     /// </summary>
-    [Field(maxLength:Constraints.NOTE_MAX_LEN,
+    [Field(maxLength: Constraints.NOTE_MAX_LEN,
            Description = "Free form text notes associated with the account")]
     public string Note { get; set; }
 
@@ -97,7 +113,7 @@ namespace Azos.AuthKit
       {
         if (ValidSpanUtc.HasValue && (!ValidSpanUtc.Value.Start.HasValue || !ValidSpanUtc.Value.End.HasValue))
         {
-          state = new ValidState(state, new FieldValidationException(nameof(ValidSpanUtc), "Either Start/End unassigned"));
+          state = new ValidState(state, new FieldValidationException(nameof(ValidSpanUtc), "Either Start/End unassigned", null));
         }
 
         if (Props != null)
@@ -106,7 +122,7 @@ namespace Azos.AuthKit
           try{ nProps = Props.Node; } catch{ /* Double guard is needed in case of batch validation mode */ }
           if (nProps != null && nProps.Exists && !nProps.IsSameName(Constraints.CONFIG_PROP_ROOT_SECTION))
           {
-            state = new ValidState(state, new FieldValidationException(nameof(Props), $"UserEntity.Props root node should be called `{Constraints.CONFIG_PROP_ROOT_SECTION}`"));
+            state = new ValidState(state, new FieldValidationException(nameof(Props), $"UserEntity.Props root node should be called `{Constraints.CONFIG_PROP_ROOT_SECTION}`", scope));
           }
         }
 
@@ -116,7 +132,7 @@ namespace Azos.AuthKit
           try { nRights = Rights.Node; } catch { /* Double guard is needed in case of batch validation mode */ }
           if (nRights != null && nRights.Exists && !nRights.IsSameName(Azos.Security.Rights.CONFIG_ROOT_SECTION))
           {
-            state = new ValidState(state, new FieldValidationException(nameof(Rights), $"UserEntity.Rights root node should be called `{Security.Rights.CONFIG_ROOT_SECTION}`"));
+            state = new ValidState(state, new FieldValidationException(nameof(Rights), $"UserEntity.Rights root node should be called `{Security.Rights.CONFIG_ROOT_SECTION}`", scope));
           }
         }
       }
@@ -130,7 +146,7 @@ namespace Azos.AuthKit
       var result = await base.DoAfterValidateOnSaveAsync(state).ConfigureAwait(false);
       if (!result.ShouldContinue) return result;
 
-      state = await m_SaveLogic.ValidateUserAsync(this, state).ConfigureAwait(false);
+      state = await SaveLogic.ValidateUserAsync(this, state).ConfigureAwait(false);
 
       return result;
     }

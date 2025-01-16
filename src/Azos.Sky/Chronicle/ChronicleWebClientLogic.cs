@@ -20,7 +20,8 @@ using Azos.Web;
 namespace Azos.Sky.Chronicle
 {
   /// <summary>
-  /// Provides client for consuming ILogChronicle and  IInstrumentationChronicle remote services
+  /// Provides client for consuming ILogChronicle and  IInstrumentationChronicle remote services.
+  /// Multiplexes reading from multiple shards when `CrossShard` filter param is passed
   /// </summary>
   public sealed class ChronicleWebClientLogic : ModuleBase, ILogChronicleLogic, IInstrumentationChronicleLogic
   {
@@ -77,12 +78,14 @@ namespace Azos.Sky.Chronicle
       return base.DoApplicationAfterInit();
     }
 
+    private int m_CallClock;
+    private ShardKey nextShard() =>  new ShardKey((uint)System.Threading.Interlocked.Increment(ref m_CallClock));
 
     public async Task WriteAsync(LogBatch data)
     {
       var response = await m_Server.Call(LogServiceAddress,
                                           nameof(ILogChronicle),
-                                          new ShardKey(DateTime.UtcNow),
+                                          nextShard(),
                                           (http, ct) => http.Client.PostAndGetJsonMapAsync("batch", new {batch = data})).ConfigureAwait(false);
       response.UnwrapChangeResult();
     }
@@ -102,7 +105,13 @@ namespace Azos.Sky.Chronicle
       filter.CrossShard = false; //stop recursion, each shard should return just its own data
       var shards = m_Server.GetEndpointsForAllShards(LogServiceAddress, nameof(ILogChronicle));
 
-      var calls = shards.Select(shard => shard.Call((http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new {filter = filter})));
+      async Task<(int shard, JsonDataMap data)> callBody(IHttpTransport http)
+      {
+        var data = await http.Client.PostAndGetJsonMapAsync("filter", new { filter = filter }).ConfigureAwait(false);
+        return (http.Assignment.Endpoint.Shard, data);
+      }
+
+      var calls = shards.Select(shard => shard.Call((http, ct) => callBody(http)));
 
       var responses = await Task.WhenAll(calls.Select( async call => {
         try
@@ -111,14 +120,23 @@ namespace Azos.Sky.Chronicle
         }
         catch(Exception error)
         {
-          WriteLog(MessageType.Warning, nameof(getCrossShard), "Shard fetch error: " + error.ToMessageWithType(), error);
-          return null;
+          WriteLog(MessageType.Error, nameof(getCrossShard), "Shard fetch error: " + error.ToMessageWithType(), error);
+
+          if (filter.DemandAllShards) throw;
+
+          return (0, null);
         }
       })).ConfigureAwait(false);
 
-      var result = responses.SelectMany(response => response.UnwrapPayloadArray()
-                                                            .OfType<JsonDataMap>()
-                                                            .Select(imap => JsonReader.ToDoc<Message>(imap)))
+      var result = responses.Where(one => one.data != null)
+                            .SelectMany(response => response.data.UnwrapPayloadArray()
+                                                                 .OfType<JsonDataMap>()
+                                                                 .Select(imap =>
+                                                                 {
+                                                                    var msg =  JsonReader.ToDoc<Message>(imap);
+                                                                    msg.SrcDataShard = response.shard;
+                                                                    return msg;
+                                                                 }))
                             .OrderBy(m => m.UTCTimeStamp)
                             .ToArray();
 
@@ -127,14 +145,35 @@ namespace Azos.Sky.Chronicle
 
     private async Task<IEnumerable<Message>> getOneShard(LogChronicleFilter filter)
     {
-      var response = await m_Server.Call(LogServiceAddress,
-                                          nameof(ILogChronicle),
-                                          new ShardKey(0u),
-                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new {filter = filter})).ConfigureAwait(false);
+      JsonDataMap response;
+
+      int? srcDataShard = null;
+
+      if (!filter.SpecificShard.HasValue)
+      {
+        response = await m_Server.Call(LogServiceAddress,
+                                       nameof(ILogChronicle),
+                                       new ShardKey(0u),
+                                       (http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new {filter = filter})).ConfigureAwait(false);
+      }
+      else
+      {
+        var sidx = filter.SpecificShard.Value;
+        var shards = m_Server.GetEndpointsForAllShards(LogServiceAddress, nameof(ILogChronicle)).ToArray();
+        if (sidx < 0 || sidx >= shards.Length ) return Enumerable.Empty<Message>();
+        var shard = shards[sidx];
+        srcDataShard = shard.FirstOrDefault().Endpoint?.Shard;
+        response = await shard.Call((http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new { filter = filter })).ConfigureAwait(false);
+      }
 
       var result = response.UnwrapPayloadArray()
               .OfType<JsonDataMap>()
-              .Select(imap => JsonReader.ToDoc<Message>(imap));
+              .Select(imap =>
+              {
+                var result = JsonReader.ToDoc<Message>(imap);
+                result.SrcDataShard = srcDataShard;
+                return result;
+              }).ToArray();
 
       return result;
     }
@@ -153,7 +192,10 @@ namespace Azos.Sky.Chronicle
         }
         catch (Exception error)
         {
-          WriteLog(MessageType.Warning, nameof(getCrossShard), "Shard fetch error: " + error.ToMessageWithType(), error);
+          WriteLog(MessageType.Error, nameof(getCrossShard), "Shard fetch error: " + error.ToMessageWithType(), error);
+
+          if (filter.LogFilter.DemandAllShards) throw;
+
           return null;
         }
       })).ConfigureAwait(false);
@@ -169,14 +211,27 @@ namespace Azos.Sky.Chronicle
 
     private async Task<IEnumerable<Fact>> getFactsOneShard(LogChronicleFactFilter filter)
     {
-      var response = await m_Server.Call(LogServiceAddress,
-                                          nameof(ILogChronicle),
-                                          new ShardKey(0u),
-                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("filter-facts", new { filter = filter })).ConfigureAwait(false);
+      JsonDataMap response;
+
+      if (!filter.LogFilter.SpecificShard.HasValue)
+      {
+        response = await m_Server.Call(LogServiceAddress,
+                                       nameof(ILogChronicle),
+                                       new ShardKey(0u),
+                                       (http, ct) => http.Client.PostAndGetJsonMapAsync("filter-facts", new { filter = filter })).ConfigureAwait(false);
+      }
+      else
+      {
+        var sidx = filter.LogFilter.SpecificShard.Value;
+        var shards = m_Server.GetEndpointsForAllShards(LogServiceAddress, nameof(ILogChronicle)).ToArray();
+        if (sidx < 0 || sidx >= shards.Length) return Enumerable.Empty<Fact>();
+        response = await shards[sidx].Call((http, ct) => http.Client.PostAndGetJsonMapAsync("filter-facts", new { filter = filter })).ConfigureAwait(false);
+      }
 
       var result = response.UnwrapPayloadArray()
               .OfType<JsonDataMap>()
-              .Select(imap => JsonReader.ToDoc<Fact>(imap));
+              .Select(imap => JsonReader.ToDoc<Fact>(imap))
+              .ToArray();
 
       return result;
     }
@@ -185,7 +240,7 @@ namespace Azos.Sky.Chronicle
     {
       var response = await m_Server.Call(InstrumentationServiceAddress,
                                          nameof(IInstrumentationChronicle),
-                                         new ShardKey(DateTime.UtcNow),
+                                         nextShard(),
                                          (http, ct) => http.Client.PostAndGetJsonMapAsync("batch", new {batch = data})).ConfigureAwait(false);
       response.UnwrapChangeResult();
     }
@@ -198,7 +253,8 @@ namespace Azos.Sky.Chronicle
                                            (http, ct) => http.Client.PostAndGetJsonMapAsync("filter", new {filter = filter})).ConfigureAwait(false);
 
       var result = response.UnwrapPayloadArray()
-                           .OfType<JsonDataMap>();
+                           .OfType<JsonDataMap>()
+                           .ToArray();
 
       return result;
     }

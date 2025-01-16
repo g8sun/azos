@@ -10,8 +10,8 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Azos.Data;
-using Azos.Serialization;
-using Azos.Serialization.Bix;
+using Azos.Financial;
+using Azos.Pile;
 using Azos.Serialization.JSON;
 
 using TypeCode = Azos.Serialization.Bix.TypeCode;
@@ -81,6 +81,10 @@ namespace Azos.Serialization.Bix
       {typeof(Guid),     (w, v) => { w.Write(TypeCode.Guid);     w.Write((Guid)v);    } },
       {typeof(GDID),     (w, v) => { w.Write(TypeCode.GDID);     w.Write((GDID)v);    } },
       {typeof(RGDID),    (w, v) => { w.Write(TypeCode.RGDID);    w.Write((RGDID)v);   } },
+      {typeof(NLSMap),   (w, v) => { w.Write(TypeCode.NLSMap);   w.Write(  (NLSMap)v);   } },
+      {typeof(Amount),   (w, v) => { w.Write(TypeCode.Amount);   w.Write(  (Amount)v);   } },
+      {typeof(PilePointer),   (w, v) => { w.Write(TypeCode.PilePointer);   w.Write(  (PilePointer)v);   } },
+      {typeof(FID),      (w, v) => { w.Write(TypeCode.FID);   w.Write(  (FID)v);   } },
       {typeof(byte[]),   (w, v) => { w.Write(TypeCode.Buffer);   w.WriteBuffer((byte[])v);} },
     };
 
@@ -106,6 +110,10 @@ namespace Azos.Serialization.Bix
       {TypeCode.Guid,     (r, ver) =>  r.ReadGuid()     },
       {TypeCode.GDID,     (r, ver) =>  r.ReadGDID()     },
       {TypeCode.RGDID,    (r, ver) =>  r.ReadRGDID()    },
+      {TypeCode.NLSMap,   (r, ver) =>  r.ReadNLSMap()   },
+      {TypeCode.Amount,   (r, ver) =>  r.ReadAmount()   },
+      {TypeCode.PilePointer, (r, ver) =>  r.ReadPilePointer()},
+      {TypeCode.FID,      (r, ver) =>  r.ReadFID()},
       {TypeCode.Buffer,   (r, ver) =>  r.ReadBuffer()   },
     };
 
@@ -248,6 +256,12 @@ namespace Azos.Serialization.Bix
       }
 
       var tvalue = value.GetType();
+      //#921 20241013 DKh
+      if (WRITERS.TryGetValue(tvalue, out var vw))
+      {
+        vw(writer, value);
+        return;
+      }
 
       //Reinterpret new{a=1} as JsonDataMap
       if (tvalue.IsAnonymousType()) value = anonymousToMap(value);
@@ -287,10 +301,15 @@ namespace Azos.Serialization.Bix
         return;
       }
 
-      //Array/List
-      if (value is IList array && value is not byte[])
+      //Array/List/Enumerable
+      if ((value is IList || (value is IEnumerable && value is not string)) && value is not byte[])
       {
         writer.Write(TypeCode.Array);
+
+        //20230619 DKh - treat IEnumerable as a List<object>, yes making copy
+        var array = value as IList;
+        if (array==null) array = ((IEnumerable)value).Cast<object>().ToList();
+
 
         if (set == null)//the trick is to allocate set only here
         {               //so most cases with top-level map do NOT allocate set as it allocates only on a first field of type map
@@ -309,17 +328,9 @@ namespace Azos.Serialization.Bix
         return;
       }
 
-      var tv = value.GetType();
-      if (WRITERS.TryGetValue(tv, out var vw))
-      {
-        vw(writer, value);
-      }
-      else
-      {
-        writer.Write(TypeCode.JsonObject);
-        var json = JsonWriter.Write(value, JSON_ENCODE_FORMAT);
-        writer.Write(json);
-      }
+      writer.Write(TypeCode.JsonObject);
+      var json = JsonWriter.Write(value, JSON_ENCODE_FORMAT);
+      writer.Write(json);
     }
 
     private static object readValue(BixReader reader, byte ver, JsonReader.DocReadOptions? docReadOptions)

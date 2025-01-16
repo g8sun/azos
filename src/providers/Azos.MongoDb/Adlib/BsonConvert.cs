@@ -158,6 +158,7 @@ namespace Azos.Data.Adlib.Server
       {
         selector = new BSONDocument();
         selector.Set(new BSONInt32Element(FLD_GDID, 1));
+        selector.Set(new BSONInt32Element(FLD_SEGMENT, 1));
         selector.Set(new BSONInt32Element(FLD_CREATEUTC, 1));
         selector.Set(new BSONInt32Element(FLD_ORIGIN, 1));
         selector.Set(new BSONInt32Element(FLD_HEADERS, 1));
@@ -173,6 +174,35 @@ namespace Azos.Data.Adlib.Server
         var wq = new Query();
         wq.Set(new BSONArrayElement("$and", new[]{ new BSONDocumentElement(qry), new BSONDocumentElement(new BSONDocument().Set(new BSONInt32Element(FLD_SEGMENT, filter.Segment.Value)))} ));
         qry  = wq;
+      }
+
+      if (filter.CreateDateRangeUtc.HasValue)
+      {
+        var range = filter.CreateDateRangeUtc.Value;
+        if (range.Start.HasValue)
+        {
+          var wq = new Query();
+          wq.Set(new BSONArrayElement("$and", new[]  // $and: [qry, {cutc: {$gte: startdate}}]
+                 {
+                   new BSONDocumentElement(qry),
+                   new BSONDocumentElement(new BSONDocument().Set(new BSONDocumentElement(FLD_CREATEUTC, new BSONDocument().Set(new BSONInt64Element("$gte", range.Start.Value.ToMillisecondsSinceUnixEpochStart())))))
+                 })
+                );
+          qry = wq;
+        }
+
+        if (range.End.HasValue)
+        {
+          var wq = new Query();
+          wq.Set(new BSONArrayElement("$and", new[]  // $and: [qry, {cutc: {$lte: enddate}}]
+                 {
+                   new BSONDocumentElement(qry),
+                   new BSONDocumentElement(new BSONDocument().Set(new BSONDocumentElement(FLD_CREATEUTC, new BSONDocument().Set(new BSONInt64Element("$lte", range.End.Value.ToMillisecondsSinceUnixEpochStart())))))
+                 })
+                );
+          qry = wq;
+        }
+
       }
 
       qry.ProjectionSelector = selector;

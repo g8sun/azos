@@ -14,6 +14,7 @@ using Azos.Text;
 using Azos.IO.FileSystem;
 using Azos.Serialization.JSON;
 using Azos.CodeAnalysis.Laconfig;
+using Azos.Scripting.Expressions.Conf;
 
 namespace Azos.Conf
 {
@@ -672,6 +673,15 @@ namespace Azos.Conf
 
 
     #region Properties
+
+    /// <summary>
+    /// Added in Feb 26, 2024 DKh:
+    /// If set, provides an optional enumerable of type search paths which system may use
+    /// to locate types by partial name, <see cref="FactoryUtils.Make{T}(IConfigSectionNode, Type, object[])"/> family of methods.
+    /// By default, null which means no additional type paths
+    /// </summary>
+    [field:NonSerialized]
+    public IEnumerable<string> TypeSearchPaths { get; set; }
 
     /// <summary>
     /// Indicates whether this node has any child section nodes
@@ -1429,7 +1439,10 @@ namespace Azos.Conf
       {
         ts_Depth_ProcessAllExistingIncludes++;
         if (ts_Depth_ProcessAllExistingIncludes > MAX_INCLUDE_DEPTH)
-            throw new ConfigException(StringConsts.CONFIG_INCLUDE_PRAGMA_DEPTH_ERROR.Args(MAX_INCLUDE_DEPTH));
+        {
+          ts_Depth_ProcessAllExistingIncludes = 0;
+          throw new ConfigException(StringConsts.CONFIG_INCLUDE_PRAGMA_DEPTH_ERROR.Args(MAX_INCLUDE_DEPTH));
+        }
 
         var found = ProcessIncludePragmas(true, includePragma, overrideRules);
         if (found) ProcessAllExistingIncludes(configLevelName, includePragma, overrideRules);
@@ -1508,6 +1521,65 @@ namespace Azos.Conf
       }
 
       return result;
+    }
+
+    /// <summary>
+    /// Processes exclude pragmas by deleting the specified nodes when conditions match.
+    /// </summary>
+    /// <param name="recurse">To process child sections</param>
+    /// <param name="deletePragmas">
+    /// Pass true to delete pragma sections with conditions which did not match. When conditions match the whole
+    /// parent node gets excluded from config, however when conditions do not match then the pragma node itself
+    /// will be deleted if you pass true
+    /// </param>
+    /// <param name="configLevelName">Optional logic name of config level which gets included in exception text in case of error</param>
+    /// <param name="excludePragma">Pragma name, <see cref="Configuration.DEFAULT_CONFIG_EXCLUDE_PRAGMA"/> by default</param>
+    public bool ProcessExcludes(bool recurse, bool deletePragmas, string configLevelName = null, string excludePragma = null)
+    {
+      if (excludePragma.IsNullOrWhiteSpace())
+        excludePragma = Configuration.DEFAULT_CONFIG_EXCLUDE_PRAGMA;
+
+      var wasChange = false;
+      checkCanModify();
+
+      bool filterCondition(IConfigSectionNode one)
+      {
+        try
+        {
+          var filter = FactoryUtils.MakeAndConfigure<ConfigNodeFilter>(one, typeof(ConfigNodeFilter));
+          var result = filter.Evaluate(this);
+          return result;
+        }
+        catch(Exception error)
+        {
+          throw new ConfigException("ProcessExcludes() filter error: " + error.ToMessageWithType(), error);
+        }
+      }
+
+      foreach (var child in Children)//Children does snapshot
+      {
+        if (child.IsSameName(excludePragma))
+        {
+          var fit = filterCondition(child);
+          if (!fit)
+          {
+            if (deletePragmas) child.Delete();
+            continue;
+          }
+          var parent = child.Parent;
+          if (parent.Exists)
+          {
+            parent.Delete();
+            wasChange = true;
+          }
+        }
+        if (recurse)
+        {
+          wasChange |= child.ProcessExcludes(recurse, deletePragmas, child.Name, excludePragma);
+        }
+      }
+
+      return wasChange;
     }
 
     /// <summary>
@@ -1693,7 +1765,10 @@ namespace Azos.Conf
                                           Configuration.CONFIG_INCLUDE_PRAGMA_COPY_ATTR));
 
         var root = pragma.NavigateSection(copyPath);
-        return (root.Exists ? root : null, isOverride);
+
+        //20230725 DKh #889
+        if (!root.Exists) return (null, isOverride);
+        return (new MemoryConfiguration().CreateFromNode(root).Root, isOverride);
       }
 
       if (fileName.IsNullOrWhiteSpace() && !ndProvider.Exists)
@@ -1735,7 +1810,11 @@ namespace Azos.Conf
           return (null, isOverride);
         }
 
-        var root = Configuration.ProviderLoadFromFile(fileName).Root;
+        //20230716 DKh #870
+        var safeAlgo = pragma.ValOf(Configuration.CONFIG_INCLUDE_PRAGMA_SAFE_ALGO_ATTR);
+        var safeExt = pragma.ValOf(Configuration.CONFIG_INCLUDE_PRAGMA_SAFE_EXT_ATTR);
+        //20230716 DKh #870
+        var root = Configuration.ProviderLoadFromFile(fileName, safeAlgo, safeExt).Root;
         return (root, isOverride);
       }
 
@@ -2021,6 +2100,7 @@ namespace Azos.Conf
     private string runMacro(string value, TokenParser.Token macro)
     {
       var config = new MemoryConfiguration();
+      config.Application = this.Configuration.Application;
       config.Create();
 
       foreach (var key in macro.Keys)
@@ -2030,7 +2110,7 @@ namespace Azos.Conf
           if (attr != null)
             config.Root.AddAttributeNode(attr.Name, attr.Value);
         }
-      return m_Configuration.RunMacro(this, value, macro.Name, config.Root);
+      return m_Configuration.RunMacro(this, value, macro.Name, config.Root) ?? string.Empty;
     }
 
 

@@ -47,6 +47,9 @@ namespace Azos
 
         public const string ARGUMENT_ERROR = "Argument error: ";
 
+        public const string SELECT_EITHER_MATCH_NOT_HANDLED_ERROR = "Enumerable value of type `{0}` is not handled by any of cases of `SelectEitherOf()` projection";
+
+
         public const string APP_CONTAINER_NESTING_ERROR =
 @"Catastrophic error trying to nest app container of type '{0}' over an existing app '{1}' which does not have AllowNesting flag set.
  Revise app container allocation logic which is usually at the app entry point.
@@ -229,16 +232,11 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
 
     public const string SECDB_STREAM_CORRUPTED_ERROR = "SecDB data stream is corrupted: ";
 
-
-    public const string BINLOG_STREAM_NULL_ERROR = "BinLog stream is null: ";
-    public const string BINLOG_STREAM_CANT_SEEK_WRITE_ERROR = "BinLog stream can not seek or can not write: ";
-    public const string BINLOG_STREAM_CORRUPTED_ERROR = "BinLog data stream is corrupted: ";
-    public const string BINLOG_READER_FACTORY_ERROR = "BinLog reader factory error: ";
-    public const string BINLOG_READER_TYPE_MISMATCH_ERROR = "BinLog reader type mismatched. Class: '{0}' Stream: '{1}'";
-    public const string BINLOG_BAD_READER_TYPE_ERROR = "BinLog header contains reader type which could not be loaded or is not a valid LogReader derivative: ";
-
     public const string SECURITY_AUTHROIZATION_ERROR =
         "Authorization to '{0}' failed from '{1}'";
+
+    public const string SECURITY_ACCESS_TO_THESAFE_DENIED_ERROR =
+        "Access to TheSafe was denied as assertion `{0}` failed";
 
     public const string SECURITY_IDP_UPSTREAM_CALL_ERROR =
          "IDP upstream server call failure: {0}";
@@ -332,11 +330,17 @@ and the name of module or INamed entity must match if the 'Name' constraint was 
     public const string CONFIG_NO_PROVIDER_LOAD_FILE_ERROR =
         "No configuration provider can load content from file name: ";
 
+    public const string CONFIG_PROVIDER_LOAD_FILE_THESAFE_ERROR =
+        "Error obtaining configuration provider content from TheSafe.\nCheck that TheSafe is configured with matching algorithms and keys/passwords: ";
+
     public const string CONFIG_NO_PROVIDER_HANDLE_FILE_ERROR =
         "No configuration provider can handle file name: ";
 
     public const string CONFIG_NO_PROVIDER_LOAD_FORMAT_ERROR =
         "No configuration provider can open content supplied in this format: ";
+
+    public const string CONFIG_MACRO_DECIPHER_FAILURE_ERROR = "Could not `::decipher` the value `{0}...`[{1}] around `{2}`. Check safe keys";
+    public const string CONFIG_MACRO_DECIPHER_RQUIRED_ERROR = "Missing required value for `::decipher` around `{0}`";
 
     public const string CONFIG_VARS_EVAL_ERROR =
         "Configuration variable '{0}' evaluation error: {1}";

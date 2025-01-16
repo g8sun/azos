@@ -46,12 +46,22 @@ namespace Azos.Web
                     //#874 Bixon vs Json determination
                     //20230604 DKh
                     JsonDataMap map = null;
-                    var responseMime = response.Content.Headers.ContentType.MediaType;
+                    var responseMime = response.Content?.Headers?.ContentType?.MediaType;
+
+                    //20241114 JPK GMK DKH #929
+                    if (responseMime.IsNullOrWhiteSpace()) return null;
 
                     if (responseMime.IndexOf(ContentType.JSON) >= 0)
                     {
                       var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                      ropt = ropt ?? (responseMime.IndexOf(ContentType.JSON_WITH_TYPEHINTS) >= 0 ? JsonReadingOptions.DefaultWithTypeHints : JsonReadingOptions.Default);
+
+                      //20240219 DKh #909
+                      //passed parameter has more specificity than the aspect
+                      var needTypeHints = responseMime.IndexOf(ContentType.JSON_WITH_TYPEHINTS) >= 0;
+                      if (ropt == null && client is IJsonReadingOptionsAspect jroa) ropt = jroa.GetJsonReadingOptions(needTypeHints);
+                      //-----------------
+
+                      ropt = ropt ?? (needTypeHints ? JsonReadingOptions.DefaultWithTypeHints : JsonReadingOptions.Default);
                       var obj = JsonReader.DeserializeDataObject(json, ropt: ropt);
                       map = (obj as JsonDataMap).NonNull(StringConsts.WEB_CALL_RETURN_JSONMAP_ERROR.Args(json.TakeFirstChars(48)));
                     }
@@ -68,7 +78,7 @@ namespace Azos.Web
 
                     return map;
                   },
-                  response => response.Content.ReadAsStringAsync(),
+                  response => response.Content?.ReadAsStringAsync(),
                   uri,
                   method,
                   body,
@@ -95,8 +105,8 @@ namespace Azos.Web
                                                         Func<object> fGetIdentityContext = null,
                                                         bool requestBixon = false)
     => CallAsync(client,
-                  response => response.Content.ReadAsByteArrayAsync(),
-                  response => response.Content.ReadAsStringAsync(),
+                  response => response.Content?.ReadAsByteArrayAsync(),
+                  response => response.Content?.ReadAsStringAsync(),
                   uri,
                   method,
                   body,
